@@ -1,4 +1,4 @@
-// 1. A importação mágica que faltava!
+// 1. A importação com o caminho correto apontando para o node_modules
 import { PrismaClient as TenantClient } from '@prisma/tenant-client';
 
 const tenantClients: Record<string, TenantClient> = {};
@@ -11,9 +11,8 @@ export function getTenantClient(tenantDbName: string): TenantClient {
   const baseDbUrl = process.env.DATABASE_BASE_URL; 
   const databaseUrl = `${baseDbUrl}/${tenantDbName}?schema=public`;
 
-  // Agora ele instancia usando o client customizado gerado!
   const client = new TenantClient({
-    datasources: {
+    datasources: {      
       tenantdb: { url: databaseUrl },
     },
   });

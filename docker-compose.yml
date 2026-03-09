@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexora_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: adminpassword
+      POSTGRES_DB: nexora_master # Banco de dados principal que ele vai criar sozinho
+    ports:
+      - "5432:5432"
+    volumes:
+      - nexora_pg_data:/var/lib/postgresql/data
+
+volumes:
+  nexora_pg_data:
