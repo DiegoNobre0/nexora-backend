@@ -1,5 +1,3 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,46 +7,33 @@ datasource db {
   url      = env("MASTER_DATABASE_URL")
 }
 
-// ------------------------------------------------------
-// 1. PLANOS (Os pacotes que o Nexora vai vender)
-// ------------------------------------------------------
 model Plan {
   id            String   @id @default(uuid())
-  name          String   // Ex: "Basic", "Pro", "Enterprise"
+  name          String   
   price         Decimal  @db.Decimal(10, 2)
   max_employees Int      @default(1)
-  features      Json?    // Estrutura flexível para flags (ex: { "has_ai": true, "has_whatsapp": true })
+  features      Json?    
   is_active     Boolean  @default(true)
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
-
   subscriptions Subscription[]
-
   @@map("plans")
 }
 
-// ------------------------------------------------------
-// 2. EMPRESAS (Os salões, barbearias e clínicas)
-// ------------------------------------------------------
 model Company {
   id             String   @id @default(uuid())
   name           String
-  slug           String   @unique // Para URLs amigáveis (ex: nexora.com/barbearia-do-ze)
-  tenant_db_name String   @unique // O NOME DA BASE DE DADOS ISOLADA DESTA EMPRESA (Crucial para a arquitetura)
-  document       String?  @unique // NIF / CNPJ
+  slug           String   @unique 
+  tenant_db_name String   @unique 
+  document       String?  @unique 
   is_active      Boolean  @default(true)
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
-
   users         User[]
   subscriptions Subscription[]
-
   @@map("companies")
 }
 
-// ------------------------------------------------------
-// 3. UTILIZADORES (Os donos e gestores das empresas)
-// ------------------------------------------------------
 model User {
   id            String   @id @default(uuid())
   company_id    String
@@ -58,15 +43,10 @@ model User {
   role          Role     @default(OWNER)
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
-
   company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
-
   @@map("users")
 }
 
-// ------------------------------------------------------
-// 4. ASSINATURAS (A ligação entre a Empresa e o Plano)
-// ------------------------------------------------------
 model Subscription {
   id                   String             @id @default(uuid())
   company_id           String
@@ -74,23 +54,18 @@ model Subscription {
   status               SubscriptionStatus @default(TRIALING)
   current_period_start DateTime
   current_period_end   DateTime
-  gateway_customer_id  String?            // ID do cliente no Stripe/Asaas/MercadoPago
-  gateway_sub_id       String?            // ID da assinatura no gateway de pagamento
+  gateway_customer_id  String?            
+  gateway_sub_id       String?            
   created_at           DateTime           @default(now())
   updated_at           DateTime           @updatedAt
-
   company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
   plan    Plan    @relation(fields: [plan_id], references: [id], onDelete: Restrict)
-
   @@map("subscriptions")
 }
 
-// ------------------------------------------------------
-// ENUMS (Tipos fixos de dados)
-// ------------------------------------------------------
 enum Role {
-  SUPERADMIN // A sua equipa (Administradores do Nexora)
-  OWNER      // Dono do salão/clínica
+  SUPERADMIN 
+  OWNER      
 }
 
 enum SubscriptionStatus {

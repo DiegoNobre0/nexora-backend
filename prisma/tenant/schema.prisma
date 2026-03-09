@@ -1,0 +1,124 @@
+// prisma/tenant/tenant.prisma
+
+generator tenantClient { 
+  provider = "prisma-client-js"
+  output   = "../../node_modules/@prisma/tenant-client"
+}
+
+
+datasource tenantdb { 
+  provider = "postgresql"
+  url      = env("TENANT_DATABASE_URL") 
+}
+
+// ------------------------------------------------------
+// 1. CLIENTES (CRM)
+// ------------------------------------------------------
+model Client {
+  id         String   @id @default(uuid())
+  name       String
+  phone      String   @unique
+  birth_date DateTime?
+  notes      String?  @tenantdb.Text
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  appointments Appointment[]
+
+  @@map("clients")
+}
+
+// ------------------------------------------------------
+// 2. PROFISSIONAIS (Equipe)
+// ------------------------------------------------------
+model Employee {
+  id         String   @id @default(uuid())
+  name       String
+  phone      String?
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  services     EmployeeService[]
+  appointments Appointment[]
+
+  @@map("employees")
+}
+
+// ------------------------------------------------------
+// 3. SERVIÇOS
+// ------------------------------------------------------
+model Service {
+  id               String   @id @default(uuid())
+  name             String
+  description      String? @tenantdb.Text
+  price            Decimal  @tenantdb.Decimal(10, 2)
+  duration_minutes Int      
+  is_active        Boolean  @default(true)
+
+  employees    EmployeeService[]
+  appointments Appointment[]
+
+  @@map("services")
+}
+
+// ------------------------------------------------------
+// 4. RELAÇÃO PROFISSIONAL <-> SERVIÇO (Comissões)
+// ------------------------------------------------------
+model EmployeeService {
+  employee_id           String
+  service_id            String
+  commission_percentage Decimal @tenantdb.Decimal(5, 2) 
+
+  employee Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  service  Service  @relation(fields: [service_id], references: [id], onDelete: Cascade)
+
+  @@id([employee_id, service_id])
+  @@map("employee_services")
+}
+
+// ------------------------------------------------------
+// 5. AGENDA (O coração do sistema)
+// ------------------------------------------------------
+model Appointment {
+  id          String            @id @default(uuid())
+  client_id   String
+  employee_id String
+  service_id  String
+  start_time  DateTime
+  end_time    DateTime
+  status      AppointmentStatus @default(PENDING)
+  notes       String? @tenantdb.Text
+  created_at  DateTime          @default(now())
+  updated_at  DateTime          @updatedAt
+
+  client   Client   @relation(fields: [client_id], references: [id])
+  employee Employee @relation(fields: [employee_id], references: [id])
+  service  Service  @relation(fields: [service_id], references: [id])
+
+  @@map("appointments")
+}
+
+// ------------------------------------------------------
+// 6. CONFIGURAÇÕES (WhatsApp e IA da Empresa)
+// ------------------------------------------------------
+model Config {
+  id               String  @id @default(uuid())
+  whatsapp_number  String?
+  whatsapp_session String? 
+  ai_prompt        String? @tenantdb.Text 
+  auto_reply       Boolean @default(true) 
+
+  @@map("configs")
+}
+
+// ------------------------------------------------------
+// ENUMS
+// ------------------------------------------------------
+enum AppointmentStatus {
+  PENDING   
+  CONFIRMED 
+  COMPLETED 
+  CANCELED  
+  NO_SHOW   
+}
