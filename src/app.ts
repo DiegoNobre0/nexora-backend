@@ -2,6 +2,9 @@ import fastify from 'fastify';
 import cors from '@fastify/cors';
 import fastifyJwt from '@fastify/jwt';
 import { authRoutes } from './modules/auth/auth.routes';
+import { usersRoutes } from './modules/users/users.routes';
+import { employeesRoutes } from './modules/tenant/Employees/employees.routes';
+import { clientsRoutes } from './modules/tenant/clients/clients.routes';
 
 export const app = fastify({
   logger: true, 
@@ -22,3 +25,6 @@ app.get('/health', async () => {
 
 // Registra as rotas de Autenticação
 app.register(authRoutes, { prefix: '/auth' });
+app.register(usersRoutes, { prefix: '/users' });
+app.register(employeesRoutes, { prefix: '/employees' });
+app.register(clientsRoutes, { prefix: '/clients' });
