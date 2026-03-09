@@ -11,4 +11,7 @@ export async function employeesRoutes(app: FastifyInstance) {
 
   app.post('/', employeesController.create);
   app.get('/', employeesController.list);
+  app.get('/:id', employeesController.getById);
+  app.patch('/:id', employeesController.update); 
+  app.delete('/:id', employeesController.delete);
 }

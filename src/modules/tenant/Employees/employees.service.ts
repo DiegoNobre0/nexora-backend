@@ -17,4 +17,26 @@ export class EmployeesService {
       include: { services: true } // Já traz os serviços que ele faz
     });
   }
+
+  async findById(db: TenantClient, id: string) {
+    return await db.employee.findUnique({
+      where: { id },
+      include: { services: true }
+    });
+  }
+
+  async update(db: TenantClient, id: string, data: { name?: string; phone?: string; is_active?: boolean }) {
+    return await db.employee.update({
+      where: { id },
+      data
+    });
+  }
+
+  async delete(db: TenantClient, id: string) {
+    // Aqui fazemos o Soft Delete para manter a integridade dos dados
+    return await db.employee.update({
+      where: { id },
+      data: { is_active: false }
+    });
+  }
 }
