@@ -1,6 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { EmployeesService } from './employees.service';
 
+
 const employeesService = new EmployeesService();
 
 export class EmployeesController {

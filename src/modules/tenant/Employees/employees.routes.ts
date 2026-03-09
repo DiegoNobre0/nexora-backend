@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { EmployeesController } from './employees.controller';
 import { tenantMiddleware } from '../../../shared/middlewares/tenant.middleware';
+import { EmployeesController } from './employees.controller';
 
 const employeesController = new EmployeesController();
 

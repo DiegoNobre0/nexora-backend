@@ -3,8 +3,10 @@ import cors from '@fastify/cors';
 import fastifyJwt from '@fastify/jwt';
 import { authRoutes } from './modules/auth/auth.routes';
 import { usersRoutes } from './modules/users/users.routes';
-import { employeesRoutes } from './modules/tenant/Employees/employees.routes';
+import { employeesRoutes } from './modules/tenant/employees/employees.routes';
 import { clientsRoutes } from './modules/tenant/clients/clients.routes';
+import { servicesRoutes } from './modules/tenant/services/services.routes';
+import { appointmentRoutes } from './modules/appointments/appointments.routes';
 
 export const app = fastify({
   logger: true, 
@@ -28,3 +30,5 @@ app.register(authRoutes, { prefix: '/auth' });
 app.register(usersRoutes, { prefix: '/users' });
 app.register(employeesRoutes, { prefix: '/employees' });
 app.register(clientsRoutes, { prefix: '/clients' });
+app.register(servicesRoutes, { prefix: '/services' });
+app.register(appointmentRoutes, { prefix: '/appointments' });
