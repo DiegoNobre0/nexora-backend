@@ -11,9 +11,24 @@ import { servicesRoutes } from './modules/business-module/services/services.rout
 import { calendarRoutes } from './modules/business-module/calendar/calendar.routes';
 import { authRoutes } from './modules/master-module/auth/auth.routes';
 import { usersRoutes } from './modules/master-module/users/users.routes';
+import socketio from 'fastify-socket.io';
+import { Server } from 'socket.io';
 
 export const app = fastify({
   logger: true, 
+});
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    io: Server;
+  }
+}
+
+app.register(socketio, {
+  cors: {
+    origin: "*", // No Angular, aponte para http://localhost:4200
+    methods: ["GET", "POST"]
+  }
 });
 
 // Configuração do CORS para o Angular (localhost:4200) conseguir acessar

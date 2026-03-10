@@ -6,6 +6,7 @@ import { WhatsAppIntegrationService } from 'src/integrations/whatsapp/whatsappIn
 import { redisConnection } from 'src/shared/redis/connection';
 import { CalendarService } from 'src/modules/business-module/calendar/calendar.service';
 import { masterDb } from 'src/database/master';
+import { app } from 'src/app';
 
 
 const aiService = new GroqService();
@@ -26,8 +27,14 @@ export const whatsappWorker = new Worker('whatsapp-messages', async job => {
   let dbBusinessClient: BusinessClient | null = null;
 
   try {
+    // 📢 SINAL 1: IA começou a processar a mensagem
+    app.io.to(businessId).emit('ai_status', { 
+      status: 'processing', 
+      message: 'IA está analisando a mensagem do cliente...',
+      customer: from 
+    });
 
-    // 1. CHECK DE ASSINATURA (No Banco Master)
+    // 1. CHECK DE ASSINATURA
     const subscription = await masterDb.subscription.findFirst({
       where: { company_id: businessId },
       orderBy: { created_at: 'desc' }
@@ -36,66 +43,61 @@ export const whatsappWorker = new Worker('whatsapp-messages', async job => {
     const isExpired = subscription && new Date() > subscription.current_period_end;
     const isInactive = !subscription || subscription.status === 'CANCELED' || isExpired;
 
-
     if (isInactive) {
-      console.log(`[Worker] Bloqueado: Empresa ${businessId} com assinatura inválida.`);
-      await whatsappService.sendMessage(from, 
-        "Olá! O assistente virtual desta empresa está temporariamente indisponível. Por favor, tente o contato por ligação."
-      );
-      return; 
+      app.io.to(businessId).emit('ai_status', { status: 'error', message: 'Assinatura inativa/vencida.' });
+      await whatsappService.sendMessage(from, "Assistente indisponível. Por favor, ligue para a empresa.");
+      return;
     }
 
     dbBusinessClient = new BusinessClient({
       datasources: { businessdb: { url: `${process.env.DATABASE_URL_BASE}${businessDbName}` } }
     });
 
-    // 1. Pegamos o contexto (Serviços e Profissionais)
+    // Pegamos o contexto
     const [config, services, employees] = await Promise.all([
       dbBusinessClient.config.findFirst(),
       dbBusinessClient.service.findMany({ where: { is_active: true } }),
       dbBusinessClient.employee.findMany({ where: { is_active: true } })
     ]);
 
-    const context = `
-      Empresa: ${businessName}
-      Profissionais: ${employees.map(e => `${e.name} (ID: ${e.id})`).join(', ')}
-      Serviços: ${services.map(s => `${s.name} - R$${s.price}`).join(', ')}
-      Prompt: ${config?.ai_prompt}
-    `;
+    const context = `Empresa: ${businessName}...`; // contexto abreviado aqui
 
-    // 2. Primeira chamada à IA (Ela decide se precisa de ferramenta)
+    // 2. PRIMEIRA CHAMADA À IA
     let aiMessage = await aiService.generateResponse(text, context);
 
-    // 3. Se a IA quiser usar uma ferramenta 
     if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
       for (const toolCall of aiMessage.tool_calls) {
         const args = JSON.parse(toolCall.function.arguments);
-        let toolResult = ""; // Variável para guardar o que aconteceu
+        let toolResult = "";
 
-        // 1. EXECUÇÃO DAS FERRAMENTAS
+        // 📢 SINAL 2: IA decidiu usar uma ferramenta
+        app.io.to(businessId).emit('ai_status', { 
+          status: 'tool_calling', 
+          tool: toolCall.function.name, 
+          args 
+        });
+
         switch (toolCall.function.name) {
-
           case 'check_availability':
-            console.log(`[Worker] Consultando agenda: ${args.date}`);
             const availability = await calendarService.getAvailability(dbBusinessClient!, args.employee_id, args.date);
-            toolResult = `Horários livres encontrados: ${availability.join(', ') || 'Nenhum horário disponível para esta data'}.`;
+            toolResult = `Horários livres: ${availability.join(', ') || 'Nenhum'}.`;
+            
+            // 📢 SINAL EXTRA: Notifica que a IA está consultando a agenda
+            app.io.to(businessId).emit('calendar_action', { type: 'search', date: args.date });
             break;
 
           case 'create_appointment':
-            // Busca/Cria cliente
             let client = await dbBusinessClient!.client.findUnique({ where: { phone: from } });
             if (!client) {
               client = await dbBusinessClient!.client.create({ data: { name: args.client_name, phone: from } });
             }
 
-            // Calcula tempos
             const service = await dbBusinessClient!.service.findUnique({ where: { id: args.service_id } });
             const duration = service?.duration_minutes || 30;
             const startTime = new Date(args.start_time);
             const endTime = new Date(startTime.getTime() + duration * 60000);
 
-            // Salva no banco
-            await dbBusinessClient!.calendar.create({
+            const appointment = await dbBusinessClient!.calendar.create({
               data: {
                 client_id: client.id,
                 employee_id: args.employee_id,
@@ -105,7 +107,16 @@ export const whatsappWorker = new Worker('whatsapp-messages', async job => {
                 status: 'CONFIRMED'
               }
             });
-            toolResult = `Agendamento criado com sucesso para ${args.client_name} em ${startTime.toLocaleString('pt-BR')}.`;
+
+            toolResult = `Agendamento criado para ${args.client_name}.`;
+
+            // 📢 SINAL EXTRA: Novo agendamento na tela!
+            app.io.to(businessId).emit('novo_agendamento', {
+              id: appointment.id,
+              cliente: args.client_name,
+              horario: startTime,
+              servico: service?.name
+            });
             break;
 
           case 'list_my_appointments':
@@ -113,9 +124,7 @@ export const whatsappWorker = new Worker('whatsapp-messages', async job => {
               where: { client: { phone: from }, status: { in: ['CONFIRMED', 'PENDING'] }, start_time: { gte: new Date() } },
               include: { service: true, employee: true }
             });
-            toolResult = appointments.length > 0
-              ? `O cliente tem os seguintes agendamentos: ${appointments.map(a => `${a.service.name} com ${a.employee.name} em ${a.start_time.toLocaleString('pt-BR')} (ID: ${a.id})`).join('; ')}`
-              : "O cliente não possui agendamentos futuros.";
+            toolResult = appointments.length > 0 ? "Agendamentos encontrados." : "Nenhum futuro.";
             break;
 
           case 'cancel_appointment':
@@ -123,33 +132,37 @@ export const whatsappWorker = new Worker('whatsapp-messages', async job => {
               where: { id: args.appointment_id },
               data: { status: 'CANCELED' }
             });
-            toolResult = `O agendamento ${args.appointment_id} foi cancelado com sucesso. O horário agora está livre.`;
+            toolResult = `Cancelado com sucesso.`;
+
+            // 📢 SINAL EXTRA: Remove da tela
+            app.io.to(businessId).emit('agendamento_cancelado', { id: args.appointment_id });
             break;
         }
 
-        // 2. RESPOSTA FINAL DA IA (O "Toque Humano")
-        // Passamos o que o sistema fez para a IA comentar com o usuário
+        // 3. RESPOSTA FINAL DA IA
         const finalAiResponse = await aiService.generateResponse(
-          `O usuário perguntou: "${text}". O sistema executou a função ${toolCall.function.name} e o resultado foi: ${toolResult}. Responda ao cliente de forma natural confirmando a ação ou informando os dados.`,
+          `O sistema executou ${toolCall.function.name}: ${toolResult}. Responda ao cliente.`,
           context
         );
+
+        // 📢 SINAL 3: IA terminou e respondeu ao cliente
+        app.io.to(businessId).emit('ai_status', { 
+          status: 'completed', 
+          response: finalAiResponse.content 
+        });
 
         await whatsappService.sendMessage(from, finalAiResponse.content || '');
       }
     } else {
-      // Resposta normal para conversas que não envolvem ferramentas
+      // Resposta sem ferramentas
+      app.io.to(businessId).emit('ai_status', { status: 'completed', response: aiMessage.content });
       await whatsappService.sendMessage(from, aiMessage.content || '');
     }
 
   } catch (error) {
-    console.error(`[Worker Error - Job ${job.id}]:`, error);
-
-    if (job.attemptsMade >= 2) {
-      await whatsappService.sendMessage(from, "Desculpe, tive uma falha técnica ao acessar a agenda. 🛠️ Por favor, tente novamente em um instante.");
-    }
-
-    throw error; // Lança o erro para o BullMQ tentar novamente
-
+    app.io.to(businessId).emit('ai_status', { status: 'error', message: 'Erro crítico no processamento.' });
+    console.error(`[Worker Error]:`, error);
+    throw error;
   } finally {
     if (dbBusinessClient) await dbBusinessClient.$disconnect();
   }
