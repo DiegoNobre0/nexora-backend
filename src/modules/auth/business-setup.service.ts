@@ -3,13 +3,13 @@ import { masterDb } from '../../database/master';
 
 export async function createTenantDatabase(tenantDbName: string) {
   try {
-    console.log(`[TenantSetup] Criando banco de dados: ${tenantDbName}...`);
+    console.log(`[BusinessSetup] Criando banco de dados: ${tenantDbName}...`);
 
     // 1. Comando SQL puro para criar o banco de dados no Postgres
     // Usamos o $executeRawUnsafe porque o nome do banco não pode ser parametrizado
     await masterDb.$executeRawUnsafe(`CREATE DATABASE ${tenantDbName}`);
 
-    console.log(`[TenantSetup] Banco ${tenantDbName} criado. Rodando tabelas...`);
+    console.log(`[BusinessSetup] Banco ${tenantDbName} criado. Rodando tabelas...`);
 
     // 2. Rodar o 'prisma db push' para o novo banco
     // Usamos a URL base + o nome do novo banco para a conexão temporária
@@ -17,7 +17,7 @@ export async function createTenantDatabase(tenantDbName: string) {
 
     // Executamos o comando do Prisma via linha de comando (shell)
     execSync(
-      `npx prisma db push --schema=prisma/tenant/schema.prisma`,
+      `npx prisma db push --schema=prisma/business/schema.prisma`,
       {
         env: {
           ...process.env,
@@ -26,9 +26,9 @@ export async function createTenantDatabase(tenantDbName: string) {
       }
     );
 
-    console.log(`[TenantSetup] Tabelas criadas com sucesso em ${tenantDbName}!`);
+    console.log(`[BusinessSetup] Tabelas criadas com sucesso em ${tenantDbName}!`);
   } catch (error) {
-    console.error(`[TenantSetup] Erro ao configurar tenant:`, error);
+    console.error(`[BusinessSetup] Erro ao configurar business:`, error);
     throw new Error('Falha ao criar infraestrutura da empresa.');
   }
 }

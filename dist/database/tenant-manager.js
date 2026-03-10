@@ -9,7 +9,6 @@ export function getTenantClient(tenantDbName) {
     const databaseUrl = `${baseDbUrl}/${tenantDbName}?schema=public`;
     const client = new TenantClient({
         datasources: {
-            // 2. Aqui precisa se chamar "tenantdb" para combinar com o seu schema.prisma!
             tenantdb: { url: databaseUrl },
         },
     });

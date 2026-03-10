@@ -1,13 +1,13 @@
 import type { FastifyInstance } from 'fastify';
-import { tenantMiddleware } from '../../../shared/middlewares/tenant.middleware';
+import { businessMiddleware } from '../../../shared/middlewares/business.middleware';
 import { EmployeesController } from './employees.controller';
 
 const employeesController = new EmployeesController();
 
 export async function employeesRoutes(app: FastifyInstance) {
   // 🛡️ AQUI: O middleware intercepta todas as rotas abaixo
-  // Ele lê o JWT, descobre o tenant_db_name e injeta o prisma no request.tenantDb
-  app.addHook('preHandler', tenantMiddleware);
+  // Ele lê o JWT, descobre o tenant_db_name e injeta o prisma no request.businessDb
+  app.addHook('preHandler', businessMiddleware);
 
   app.post('/', employeesController.create);
   app.get('/', employeesController.list);

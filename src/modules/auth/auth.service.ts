@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 
-import { createTenantDatabase } from './tenant-setup.service';
+import { createTenantDatabase } from './business-setup.service';
 import { masterDb } from 'src/database/master';
 
 export class AuthService {

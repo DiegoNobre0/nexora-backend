@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { ClientsController } from './clients.controller';
-import { tenantMiddleware } from '../../../shared/middlewares/tenant.middleware';
+import { businessMiddleware } from '../../../shared/middlewares/business.middleware';
 
 const clientsController = new ClientsController();
 
 export async function clientsRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', tenantMiddleware);
+  app.addHook('preHandler', businessMiddleware);
 
   app.post('/', clientsController.handleCreate);
   app.get('/', clientsController.handleList);

@@ -1,13 +1,13 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { getTenantClient } from '../../database/tenant-manager';
+import { getBusinessClient } from '../../database/business-manager';
 
 declare module 'fastify' {
   interface FastifyRequest {
-    tenantDb: any; 
+    businessDb: any; 
   }
 }
 
-export async function tenantMiddleware(request: FastifyRequest, reply: FastifyReply) {
+export async function businessMiddleware(request: FastifyRequest, reply: FastifyReply) {
   try {
     const authHeader = request.headers.authorization;
     
@@ -19,15 +19,15 @@ export async function tenantMiddleware(request: FastifyRequest, reply: FastifyRe
     const token = authHeader.replace('Bearer ', '');
     
     // 2. O Fastify verifica se a assinatura é válida e decodifica os dados
-    const decoded = await request.server.jwt.verify<{ tenant_db_name: string }>(token);
+    const decoded = await request.server.jwt.verify<{ business_db_name: string }>(token);
 
-    if (!decoded.tenant_db_name) {
+    if (!decoded.business_db_name) {
       return reply.status(403).send({ error: 'Empresa não identificada no token.' });
     }
 
     // 3. Conecta no banco correto e injeta no request
-    const db = getTenantClient(decoded.tenant_db_name);
-    request.tenantDb = db;
+    const db = getBusinessClient(decoded.business_db_name);
+    request.businessDb = db;
 
   } catch (error) {
     return reply.status(401).send({ error: 'Sessão inválida ou expirada.' });
