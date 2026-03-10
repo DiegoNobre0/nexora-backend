@@ -24,7 +24,7 @@ export class AuthController {
     const token = request.server.jwt.sign({
       sub: user.id,
       company_id: user.company_id,
-      tenant_db_name: user.company.tenant_db_name,
+      business_db_name: user.company.business_db_name,
       role: user.role
     }, { expiresIn: '1d' });
 

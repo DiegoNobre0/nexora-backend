@@ -1,5 +1,5 @@
 
-import { whatsappQueue } from 'src/queues/whatsapp.worker';
+import { whatsappQueue } from 'src/worker/whatsapp.worker';
 import { masterDb } from '../../../database/master';
 
 export class WhatsAppWebhookService {
@@ -32,7 +32,7 @@ export class WhatsAppWebhookService {
         // Aqui assumimos que no seu Master DB o número está atrelado à empresa
         whatsapp_number: cleanNumber 
       },
-      select: { id: true, name: true, tenant_db_name: true }
+      select: { id: true, name: true, business_db_name: true }
     });
 
     // Adiciona o trabalho na fila do BullMQ
@@ -41,7 +41,7 @@ export class WhatsAppWebhookService {
       text: message.text?.body,
       businessId: business?.id || 'unknown',
       businessName: business?.name || 'Nexora Business',
-      tenantDbName: business?.tenant_db_name // Para o Worker saber qual banco conectar
+      businessDbName: business?.business_db_name // Para o Worker saber qual banco conectar
     });
 
     return { success: true };

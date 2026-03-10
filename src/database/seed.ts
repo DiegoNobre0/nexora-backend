@@ -12,7 +12,7 @@ async function main() {
     data: {
       name: 'Barbearia do Zé',
       slug: 'barbearia-do-ze',
-      tenant_db_name: 'db_tenant_ze', // O nome do banco isolado dele
+      business_db_name: 'db_business_ze', // O nome do banco isolado dele
       document: '12345678900',
     }
   });

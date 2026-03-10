@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 
-import { createTenantDatabase } from './business-setup.service';
+import { createBusinessDatabase } from './business-setup.service';
 import { masterDb } from 'src/database/master';
 
 export class AuthService {
@@ -9,21 +9,21 @@ export class AuthService {
 
     // 1. Lógica de geração de identificadores
     const slug = company_name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
-    const tenantDbName = `db_tenant_${slug.replace(/-/g, '_')}`;
+    const businessDbName = `db_business_${slug.replace(/-/g, '_')}`;
 
     // 2. Validação de existência
     const existingUser = await masterDb.user.findUnique({ where: { email } });
     if (existingUser) throw new Error('E-mail já cadastrado.');
 
     // 3. Infraestrutura Automática (Banco + Tabelas)
-    await createTenantDatabase(tenantDbName);
+    await createBusinessDatabase(businessDbName);
 
     // 4. Persistência no Master (Transação)
     const passwordHash = await bcrypt.hash(password, 10);
 
     return await masterDb.$transaction(async (db) => {
       const company = await db.company.create({
-        data: { name: company_name, slug, tenant_db_name: tenantDbName }
+        data: { name: company_name, slug, business_db_name: businessDbName }
       });
 
       const user = await db.user.create({

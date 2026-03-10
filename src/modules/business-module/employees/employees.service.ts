@@ -11,6 +11,30 @@ export class EmployeesService {
     });
   }
 
+  async link(db: BusinessClient, data: { employeeId: string, serviceId: string, commission: number }) {
+    return await db.employeeService.upsert({
+      where: {
+        employee_id_service_id: {
+          employee_id: data.employeeId,
+          service_id: data.serviceId
+        }
+      },
+      update: { commission_percentage: data.commission },
+      create: {
+        employee_id: data.employeeId,
+        service_id: data.serviceId,
+        commission_percentage: data.commission
+      }
+    });
+  }
+
+  async getProvidersByService(db: BusinessClient, serviceId: string) {
+    return await db.employeeService.findMany({
+      where: { service_id: serviceId },
+      include: { employee: { select: { id: true, name: true } } }
+    });
+  }
+
   async listAll(businessClient: BusinessClient) {
     return await businessClient.employee.findMany({
       where: { is_active: true },

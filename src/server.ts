@@ -1,16 +1,17 @@
-import { app } from './app'; // Deixe assim!
-import 'dotenv/config';
+import { app } from './app';
+// Basta importar o arquivo! Como você tem um 'new Worker(...)' lá dentro, 
+// o Node.js vai instanciar e ele começará a ouvir o Redis imediatamente.
+import './worker/whatsapp.worker'; 
 
-const PORT = Number(process.env.PORT) || 3333;
-
-async function bootstrap() {
+const start = async () => {
   try {
-    await app.listen({ port: PORT, host: '0.0.0.0' });
-    console.log(`🚀 Servidor Nexora rodando na porta ${PORT}`);
+    await app.listen({ port: 3333, host: '0.0.0.0' });
+    console.log('🚀 Nexora API Online na porta 3333');
+    console.log('🤖 WhatsApp Worker aguardando mensagens...');
   } catch (err) {
     app.log.error(err);
     process.exit(1);
   }
-}
+};
 
-bootstrap();
+start();

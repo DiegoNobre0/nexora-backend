@@ -24,7 +24,7 @@ model Company {
   id             String   @id @default(uuid())
   name           String
   slug           String   @unique 
-  tenant_db_name String   @unique 
+  business_db_name String   @unique 
   whatsapp_number String?  @unique
   document       String?  @unique 
   is_active      Boolean  @default(true)

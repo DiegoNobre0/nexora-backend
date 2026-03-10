@@ -4,9 +4,7 @@ import { EmployeesController } from './employees.controller';
 
 const employeesController = new EmployeesController();
 
-export async function employeesRoutes(app: FastifyInstance) {
-  // 🛡️ AQUI: O middleware intercepta todas as rotas abaixo
-  // Ele lê o JWT, descobre o tenant_db_name e injeta o prisma no request.businessDb
+export async function employeesRoutes(app: FastifyInstance) { 
   app.addHook('preHandler', businessMiddleware);
 
   app.post('/', employeesController.create);
