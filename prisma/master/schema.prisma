@@ -25,6 +25,7 @@ model Company {
   name           String
   slug           String   @unique 
   tenant_db_name String   @unique 
+  whatsapp_number String?  @unique
   document       String?  @unique 
   is_active      Boolean  @default(true)
   created_at     DateTime @default(now())

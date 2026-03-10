@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-import { masterDb } from '../../database/master';
+import { masterDb } from '../../../database/master';
 
 export async function createTenantDatabase(tenantDbName: string) {
   try {

@@ -8,9 +8,9 @@ import { z } from 'zod'; // 👈 Faltava essa importação aqui!
 import { employeesRoutes } from './modules/business-module/employees/employees.routes';
 import { clientsRoutes } from './modules/business-module/clients/clients.routes';
 import { servicesRoutes } from './modules/business-module/services/services.routes';
-import { appointmentRoutes, calendarRoutes } from './modules/business-module/calendar/calendar.routes';
-import { authRoutes } from './modules/auth/auth.routes';
-import { usersRoutes } from './modules/users/users.routes';
+import { calendarRoutes } from './modules/business-module/calendar/calendar.routes';
+import { authRoutes } from './modules/master-module/auth/auth.routes';
+import { usersRoutes } from './modules/master-module/users/users.routes';
 
 export const app = fastify({
   logger: true, 

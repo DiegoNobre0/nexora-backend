@@ -16,11 +16,15 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/jwt": "^10.0.0",
     "@prisma/client": "^5.22.0",
+    "axios": "^1.13.6",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^5.70.4",
     "cors": "^2.8.6",
     "date-fns": "^4.1.0",
     "dotenv": "^17.3.1",
     "fastify": "^5.8.2",
+    "groq-sdk": "^0.37.0",
+    "ioredis": "^5.10.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
