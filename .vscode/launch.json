@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "🐛 Debug Nexora Backend",
+      "type": "node",
+      "request": "launch",
+      // Usa o tsx diretamente para rodar o TypeScript
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "tsx",
+        "src/server.ts"
+      ],
+      // Joga os logs do console direto no terminal integrado do VS Code
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      // Faz o debugger ignorar os arquivos internos do Node e node_modules, 
+      // para você não cair em código que não é seu durante o debug
+      "skipFiles": [
+        "<node_internals>/**",
+        "**/node_modules/**"
+      ]
+    }
+  ]
+}

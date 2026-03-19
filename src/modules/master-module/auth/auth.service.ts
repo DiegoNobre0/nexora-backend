@@ -5,7 +5,7 @@ import { masterDb } from 'src/database/master';
 
 export class AuthService {
   async register(data: any) {
-    const { company_name, owner_name, email, password } = data;
+    const { company_name, owner_name, email, password , whatsapp_number} = data;
 
     // 1. Lógica de geração de identificadores
     const slug = company_name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
@@ -23,7 +23,7 @@ export class AuthService {
 
     return await masterDb.$transaction(async (db) => {
       const company = await db.company.create({
-        data: { name: company_name, slug, business_db_name: businessDbName }
+        data: { name: company_name, slug, business_db_name: businessDbName, whatsapp_number } // 👈 E salvei aqui
       });
 
       const user = await db.user.create({
