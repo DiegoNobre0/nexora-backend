@@ -1,54 +1,97 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { OrderService } from './orders.service';
+import { OrdersService } from './orders.service';
+import { 
+  createOrderSchema, updateOrderStatusSchema, cancelOrderSchema, 
+  assignDeliverySchema, listOrdersSchema, calculateTotalSchema 
+} from './orders.schema';
 
-const orderService = new OrderService();
+// ─────────────────────────────────────────────────────────────
+// CONTROLLER — Orders
+// ─────────────────────────────────────────────────────────────
 
-export class OrderController {
-  async handleCreate(request: FastifyRequest, reply: FastifyReply) {
-    try {
-      const order = await orderService.create(request.businessDb, request.body);
-      return reply.status(201).send(order);
-    } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
-    }
-  }
-
-async handleList(request: FastifyRequest, reply: FastifyReply) {
-  // 1. Pegamos tanto date quanto month da query string
-  const { date, month } = request.query as { date?: string, month?: string };
-
-  // 2. Passamos como um objeto para o Service (Isso resolve o erro de tipo!)
-  const orders = await orderService.list(request.businessDb, { 
-    date, 
-    month 
-  });
-
-  return reply.send(orders);
+export async function listOrders(request: FastifyRequest, reply: FastifyReply) {
+  const filters = listOrdersSchema.parse(request.query);
+  const service = new OrdersService(request.businessDb);
+  return reply.status(200).send(await service.listOrders(filters));
 }
 
-  async handleStatusUpdate(request: FastifyRequest, reply: FastifyReply) {
-    const { id } = request.params as { id: string };
-    const { status } = request.body as { status: string };
-    const order  = await orderService.updateStatus(request.businessDb, id, status);
-    return reply.send(order);
-  }
-
-// No order.controller.ts
-
-async handleAvailability(request: FastifyRequest, reply: FastifyReply) {
-  const { employee_id, date } = request.query as { employee_id: string; date: string };
-
-  if (!employee_id || !date) {
-    return reply.status(400).send({ error: 'employee_id e date são obrigatórios.' });
-  }
-
-  const availability = await orderService.getAvailability(
-    request.businessDb, 
-    employee_id, 
-    date
-  );
-
-  return reply.send(availability);
+export async function getOrder(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const service = new OrdersService(request.businessDb);
+  return reply.status(200).send(await service.getOrderById(id));
 }
-  
+
+export async function createOrder(request: FastifyRequest, reply: FastifyReply) {
+  const body = createOrderSchema.parse(request.body);
+  const service = new OrdersService(request.businessDb);
+  return reply.status(201).send(await service.createOrder(body));
+}
+
+export async function calculateOrderTotal(request: FastifyRequest, reply: FastifyReply) {
+  const body = calculateTotalSchema.parse(request.body);
+  const service = new OrdersService(request.businessDb);
+  return reply.status(200).send(await service.calculateOrderTotal(body));
+}
+
+export async function updateOrderStatus(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const body = updateOrderStatusSchema.parse(request.body);
+  const service = new OrdersService(request.businessDb);
+  return reply.status(200).send(await service.updateOrderStatus(id, body.status));
+}
+
+export async function cancelOrder(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const body = cancelOrderSchema.parse(request.body);
+  const service = new OrdersService(request.businessDb);
+  return reply.status(200).send(await service.cancelOrder(id, body.cancel_reason));
+}
+
+// ─── Proforma (Orçamento) ───
+
+export async function createProforma(request: FastifyRequest, reply: FastifyReply) {
+  // Simplificado para receber client_id e items
+  const { client_id, items } = request.body as any; 
+  const service = new OrdersService(request.businessDb);
+  return reply.status(201).send(await service.createProforma(client_id, items));
+}
+
+export async function convertProforma(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const service = new OrdersService(request.businessDb);
+  return reply.status(200).send(await service.convertProformaToOrder(id));
+}
+
+// ─── Logística e Fila ───
+
+export async function assignDelivery(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const body = assignDeliverySchema.parse(request.body);
+  const service = new OrdersService(request.businessDb);
+  return reply.status(200).send(await service.assignDelivery(id, body.employee_id));
+}
+
+export async function estimateTime(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const service = new OrdersService(request.businessDb);
+  return reply.status(200).send(await service.estimateDeliveryTime(id));
+}
+
+export async function getQueueStatus(request: FastifyRequest, reply: FastifyReply) {
+  const service = new OrdersService(request.businessDb);
+  return reply.status(200).send(await service.getQueueStatus());
+}
+
+// ─── Relatórios ───
+
+export async function getDashboardSummary(request: FastifyRequest, reply: FastifyReply) {
+  const { date } = request.query as { date?: string };
+  const service = new OrdersService(request.businessDb);
+  return reply.status(200).send(await service.getDashboardSummary(date));
+}
+
+export async function generateDailyReport(request: FastifyRequest, reply: FastifyReply) {
+  const { date } = request.params as { date: string };
+  const service = new OrdersService(request.businessDb);
+  return reply.status(200).send(await service.generateDailyReport(date));
 }
