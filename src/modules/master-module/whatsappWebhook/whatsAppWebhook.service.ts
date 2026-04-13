@@ -2,8 +2,9 @@ import crypto from 'crypto';
 import Redis from 'ioredis';
 import { masterDb } from '../../../database/master';
 import { getBusinessClient } from '../../../database/business-manager';
-import { whatsappQueue } from '../../../worker/whatsapp.worker';
+
 import type { ParsedMessage, WebhookMessagePayload } from './whatsappWebhook.types';
+import { whatsappQueue } from 'src/worker/whatsapp.queue';
 
 // Inicializa o Redis (mesma instância do BullMQ)
 const redis = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379');

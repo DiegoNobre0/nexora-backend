@@ -1,9 +1,10 @@
+import { whatsappQueue } from 'src/worker/whatsapp.queue';
 import type { BusinessClient } from '../../../database/business-manager';
 import { NotFoundError, ConflictError, ValidationError } from '../../../shared/errors/AppError';
 import { DeliveryService } from '../delivery/delivery.service';
-import type { 
-  CreateOrderInput, UpdateOrderStatusInput, CancelOrderInput, 
-  AssignDeliveryInput, ListOrdersInput, CalculateTotalInput, OrderItemInput 
+import type {
+  CreateOrderInput, UpdateOrderStatusInput, CancelOrderInput,
+  AssignDeliveryInput, ListOrdersInput, CalculateTotalInput, OrderItemInput
 } from './orders.schema';
 
 // ─────────────────────────────────────────────────────────────
@@ -16,8 +17,10 @@ import type {
 export class OrdersService {
   private deliveryService: DeliveryService;
 
-  constructor(private readonly db: BusinessClient) {
-    // Instancia o serviço de frete injetando o mesmo contexto de banco
+
+  constructor(
+    private readonly db: BusinessClient,
+    private readonly tenantDbName: string = '') {
     this.deliveryService = new DeliveryService(db);
   }
 
@@ -25,7 +28,7 @@ export class OrdersService {
 
   async calculateOrderTotal(input: CalculateTotalInput) {
     const { items, address_id, type } = input;
-    
+
     let subtotal = 0;
     const processedItems = [];
 
@@ -34,16 +37,16 @@ export class OrdersService {
       const product = await this.db.product.findUnique({ where: { id: item.product_id } });
       if (!product) throw new NotFoundError(`Produto ID ${item.product_id}`);
       if (!product.is_active) throw new ValidationError(`Produto "${product.name}" está indisponível.`);
-      
+
       const lineTotal = Number(product.price) * item.quantity;
       subtotal += lineTotal;
 
       processedItems.push({
         product_id: product.id,
-        name:       product.name,
-        quantity:   item.quantity,
+        name: product.name,
+        quantity: item.quantity,
         unit_price: Number(product.price),
-        total:      lineTotal,
+        total: lineTotal,
       });
     }
 
@@ -106,25 +109,25 @@ export class OrdersService {
       // Cria o Pedido principal
       const order = await prisma.order.create({
         data: {
-          client_id:    input.client_id,
-          employee_id:  input.employee_id,
-          address_id:   input.address_id,
-          channel:      input.channel,
-          type:         input.type,
-          status:       'PENDING',
-          is_proforma:  input.is_proforma,
-          subtotal:     calculation.subtotal,
+          client_id: input.client_id,
+          employee_id: input.employee_id,
+          address_id: input.address_id,
+          channel: input.channel,
+          type: input.type,
+          status: 'PENDING',
+          is_proforma: input.is_proforma,
+          subtotal: calculation.subtotal,
           delivery_fee: calculation.delivery_fee,
-          discount:     input.discount,
-          total:        finalTotal,
-          notes:        input.notes,
+          discount: input.discount,
+          total: finalTotal,
+          notes: input.notes,
           items: {
             create: calculation.items.map(i => ({
               product_id: i.product_id,
-              quantity:   i.quantity,
+              quantity: i.quantity,
               unit_price: i.unit_price,
-              total:      i.total,
-              notes:      input.items.find(reqItem => reqItem.product_id === i.product_id)?.notes,
+              total: i.total,
+              notes: input.items.find(reqItem => reqItem.product_id === i.product_id)?.notes,
             })),
           },
         },
@@ -148,7 +151,7 @@ export class OrdersService {
 
   async convertProformaToOrder(orderId: string) {
     const order = await this.getOrderById(orderId);
-    
+
     if (!order.is_proforma) throw new ValidationError('Este pedido não é um orçamento.');
     if (order.status === 'CANCELED') throw new ValidationError('Orçamento cancelado não pode ser convertido.');
 
@@ -180,13 +183,39 @@ export class OrdersService {
     if (order.status === 'CANCELED') throw new ValidationError('Pedido cancelado não pode ter status alterado.');
     if (order.status === 'DELIVERED') throw new ValidationError('Pedido já entregue.');
 
-    // Regra: Se marcou como entregue, salva a data exata
     const deliveredAt = status === 'DELIVERED' ? new Date() : undefined;
 
-    return this.db.order.update({
+    // Atualiza o pedido e traz o cliente junto para pegarmos o telefone
+    const updatedOrder = await this.db.order.update({
       where: { id: orderId },
       data: { status, delivered_at: deliveredAt },
+      include: { client: true }
     });
+
+    // 🔥 NOVO: Dispara notificação assíncrona no WhatsApp!
+    if (updatedOrder.client?.phone && status !== 'PENDING') {
+      const templateMap: Record<string, string> = {
+        CONFIRMED: 'pedido_confirmado',
+        PREPARING: 'pedido_em_preparo',
+        READY: 'pedido_pronto_retirada',
+        IN_DELIVERY: 'pedido_saiu_entrega',
+        DELIVERED: 'pedido_entregue'
+      };
+
+      const templateName = templateMap[status];
+
+      if (templateName && this.tenantDbName) {
+        await whatsappQueue.add('order-notification', {
+          business_db_name: this.tenantDbName,
+          phone: updatedOrder.client.phone,
+          order_id: updatedOrder.id.split('-')[0].toUpperCase(),
+          status: status,
+          template_name: templateName
+        });
+      }
+    }
+
+    return updatedOrder;
   }
 
   async cancelOrder(orderId: string, reason: string) {
@@ -207,10 +236,10 @@ export class OrdersService {
 
       return prisma.order.update({
         where: { id: orderId },
-        data: { 
-          status: 'CANCELED', 
-          canceled_at: new Date(), 
-          cancel_reason: reason 
+        data: {
+          status: 'CANCELED',
+          canceled_at: new Date(),
+          cancel_reason: reason
         },
       });
     });
@@ -218,7 +247,7 @@ export class OrdersService {
 
   async assignDelivery(orderId: string, employeeId: string) {
     await this.getOrderById(orderId);
-    
+
     // Verifica se é entregador válido
     const employee = await this.db.employee.findUnique({ where: { id: employeeId } });
     if (!employee || !employee.is_active) throw new NotFoundError('Entregador ativo');
@@ -245,7 +274,7 @@ export class OrdersService {
     });
 
     const estimatedMinutes = 20 + (queueBefore * 5); // 20m base + 5m por pedido na fila
-    
+
     const estimatedDate = new Date();
     estimatedDate.setMinutes(estimatedDate.getMinutes() + estimatedMinutes);
 
@@ -282,13 +311,13 @@ export class OrdersService {
     let dateFilter = {};
     if (date) {
       const startDate = new Date(`${date}T00:00:00.000Z`);
-      const endDate   = new Date(`${date}T23:59:59.999Z`);
+      const endDate = new Date(`${date}T23:59:59.999Z`);
       dateFilter = { created_at: { gte: startDate, lte: endDate } };
     }
 
     const where = {
-      ...(status    && { status }),
-      ...(channel   && { channel }),
+      ...(status && { status }),
+      ...(channel && { channel }),
       ...(client_id && { client_id }),
       ...dateFilter,
     };
@@ -322,11 +351,11 @@ export class OrdersService {
       PENDING: 0, CONFIRMED: 0, PREPARING: 0, READY: 0, IN_DELIVERY: 0
     };
     stats.forEach(s => { queue[s.status as keyof typeof queue] = s._count.status; });
-    
+
     return queue;
   }
 
- async getDashboardSummary(dateStr?: string) {
+  async getDashboardSummary(dateStr?: string) {
     // Se não passar data, pega o resumo de "Hoje"
     const today = dateStr ? new Date(`${dateStr}T00:00:00.000Z`) : new Date();
     today.setHours(0, 0, 0, 0);
@@ -360,9 +389,9 @@ export class OrdersService {
 
   async generateDailyReport(dateStr: string) {
     const summary = await this.getDashboardSummary(dateStr);
-    
+
     const startDate = new Date(`${dateStr}T00:00:00.000Z`);
-    const endDate   = new Date(`${dateStr}T23:59:59.999Z`);
+    const endDate = new Date(`${dateStr}T23:59:59.999Z`);
 
     // Busca os pedidos do dia para listagem detalhada no relatório
     const orders = await this.db.order.findMany({

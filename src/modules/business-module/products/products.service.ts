@@ -1,3 +1,4 @@
+import { whatsappQueue } from 'src/worker/whatsapp.queue';
 import type { BusinessClient } from '../../../database/business-manager';
 import { NotFoundError, ConflictError, ValidationError } from '../../../shared/errors/AppError';
 import type {
@@ -15,50 +16,52 @@ import type {
 // ─────────────────────────────────────────────────────────────
 
 export class ProductsService {
-  constructor(private readonly db: BusinessClient) {}
+  constructor(
+    private readonly db: BusinessClient,
+    private readonly tenantDbName: string = '') { }
 
   // ─── Listar com filtros e paginação ───────────────────────
- async listProducts(input: ListProductsInput) {
-  const { name, category_id, is_active, low_stock, page, limit } = input;
-  const skip = (page - 1) * limit;
+  async listProducts(input: ListProductsInput) {
+    const { name, category_id, is_active, low_stock, page, limit } = input;
+    const skip = (page - 1) * limit;
 
-  const where = {
-    ...(name        && { name: { contains: name, mode: 'insensitive' as const } }),
-    ...(category_id && { category_id }),
-    ...(is_active   !== undefined && { is_active }),
-    // low_stock é tratado após a busca — Prisma não compara dois campos na mesma query
-  };
+    const where = {
+      ...(name && { name: { contains: name, mode: 'insensitive' as const } }),
+      ...(category_id && { category_id }),
+      ...(is_active !== undefined && { is_active }),
+      // low_stock é tratado após a busca — Prisma não compara dois campos na mesma query
+    };
 
-  let products = await this.db.product.findMany({
-    where,
-    orderBy: { name: 'asc' },
-    include: {
-      category: { select: { id: true, name: true } },
-      barcodes:  true,
-    },
-  });
+    let products = await this.db.product.findMany({
+      where,
+      orderBy: { name: 'asc' },
+      include: {
+        category: { select: { id: true, name: true } },
+        barcodes: true,
+      },
+    });
 
-  // Filtra em memória os produtos abaixo do estoque mínimo
-  if (low_stock) {
-    products = products.filter(p => p.stock_qty < p.stock_min);
+    // Filtra em memória os produtos abaixo do estoque mínimo
+    if (low_stock) {
+      products = products.filter(p => p.stock_qty < p.stock_min);
+    }
+
+    // Paginação manual após o filtro em memória
+    const total = products.length;
+    const paginated = products.slice(skip, skip + limit);
+
+    return {
+      data: paginated,
+      meta: {
+        total,
+        page,
+        limit,
+        total_pages: Math.ceil(total / limit),
+        has_next: page * limit < total,
+        has_prev: page > 1,
+      },
+    };
   }
-
-  // Paginação manual após o filtro em memória
-  const total      = products.length;
-  const paginated  = products.slice(skip, skip + limit);
-
-  return {
-    data: paginated,
-    meta: {
-      total,
-      page,
-      limit,
-      total_pages: Math.ceil(total / limit),
-      has_next:    page * limit < total,
-      has_prev:    page > 1,
-    },
-  };
-}
 
   // ─── Buscar por ID ─────────────────────────────────────────
   async getProductById(id: string) {
@@ -66,7 +69,7 @@ export class ProductsService {
       where: { id },
       include: {
         category: { select: { id: true, name: true } },
-        barcodes:  true,
+        barcodes: true,
       },
     });
 
@@ -83,7 +86,7 @@ export class ProductsService {
         product: {
           include: {
             category: { select: { id: true, name: true } },
-            barcodes:  true,
+            barcodes: true,
           },
         },
       },
@@ -103,22 +106,22 @@ export class ProductsService {
 
     return this.db.product.create({
       data: {
-        category_id:     input.category_id,
-        name:            input.name,
-        description:     input.description,
-        price:           input.price,
+        category_id: input.category_id,
+        name: input.name,
+        description: input.description,
+        price: input.price,
         price_wholesale: input.price_wholesale,
-        cost_price:      input.cost_price,
-        stock_qty:       input.stock_qty,
-        stock_min:       input.stock_min,
-        ncm:             input.ncm,
-        cfop:            input.cfop,
-        unit:            input.unit,
-        is_active:       input.is_active,
+        cost_price: input.cost_price,
+        stock_qty: input.stock_qty,
+        stock_min: input.stock_min,
+        ncm: input.ncm,
+        cfop: input.cfop,
+        unit: input.unit,
+        is_active: input.is_active,
       },
       include: {
         category: { select: { id: true, name: true } },
-        barcodes:  true,
+        barcodes: true,
       },
     });
   }
@@ -133,10 +136,10 @@ export class ProductsService {
 
     return this.db.product.update({
       where: { id },
-      data:  input,
+      data: input,
       include: {
         category: { select: { id: true, name: true } },
-        barcodes:  true,
+        barcodes: true,
       },
     });
   }
@@ -170,7 +173,7 @@ export class ProductsService {
 
     const updated = await this.db.product.update({
       where: { id },
-      data:  { is_active: !product.is_active },
+      data: { is_active: !product.is_active },
     });
 
     return {
@@ -180,29 +183,16 @@ export class ProductsService {
   }
 
   // ─── Movimentação de estoque ───────────────────────────────
-  async updateStock(id: string, input: UpdateStockInput) {
+ async updateStock(id: string, input: UpdateStockInput) {
     const product = await this.getProductById(id);
     const { operation, quantity } = input;
 
     let newQty: number;
-
-    if (operation === 'IN') {
-      // Entrada: soma ao estoque atual
-      newQty = product.stock_qty + quantity;
-
-    } else if (operation === 'OUT') {
-      // Saída: subtrai do estoque atual
+    if (operation === 'IN') newQty = product.stock_qty + quantity;
+    else if (operation === 'OUT') {
       newQty = product.stock_qty - quantity;
-
-      // Não permite estoque negativo
-      if (newQty < 0) {
-        throw new ValidationError(
-          `Estoque insuficiente. Disponível: ${product.stock_qty}, solicitado: ${quantity}.`
-        );
-      }
-
+      if (newQty < 0) throw new ValidationError(`Estoque insuficiente.`);
     } else {
-      // Ajuste: substitui o valor atual pelo informado
       newQty = quantity;
     }
 
@@ -211,15 +201,21 @@ export class ProductsService {
       data:  { stock_qty: newQty },
     });
 
-    // Dispara alerta se estoque ficou abaixo do mínimo
     const isLowStock = updated.stock_qty < updated.stock_min;
+
+    // 🔥 NOVO: Dispara alerta assíncrono pro dono da loja
+    if (isLowStock && this.tenantDbName) {
+      await whatsappQueue.add('low-stock-alert', {
+        business_db_name: this.tenantDbName,
+        product_name: updated.name,
+        stock_qty: updated.stock_qty
+      });
+    }
 
     return {
       ...updated,
       low_stock_alert: isLowStock,
-      message: isLowStock
-        ? `⚠️ Estoque de "${updated.name}" está abaixo do mínimo (${updated.stock_qty}/${updated.stock_min}).`
-        : `Estoque de "${updated.name}" atualizado para ${updated.stock_qty} ${updated.unit}.`,
+      message: `Estoque de "${updated.name}" atualizado para ${updated.stock_qty} ${updated.unit}.`,
     };
   }
 
@@ -230,10 +226,10 @@ export class ProductsService {
     const available = product.is_active && product.stock_qty >= quantity;
 
     return {
-      product_id:  product.id,
-      name:        product.name,
-      stock_qty:   product.stock_qty,
-      requested:   quantity,
+      product_id: product.id,
+      name: product.name,
+      stock_qty: product.stock_qty,
+      requested: quantity,
       available,
       message: available
         ? 'Produto disponível.'
@@ -244,21 +240,21 @@ export class ProductsService {
   }
 
   // ─── Listar produtos abaixo do estoque mínimo ─────────────
-async lowStockAlert() {
-  const products = await this.db.product.findMany({
-    where:   { is_active: true },
-    include: { category: { select: { id: true, name: true } } },
-  });
+  async lowStockAlert() {
+    const products = await this.db.product.findMany({
+      where: { is_active: true },
+      include: { category: { select: { id: true, name: true } } },
+    });
 
-  // Filtra em memória os que estão abaixo do mínimo
-  const lowStock = products.filter(p => p.stock_qty < p.stock_min);
+    // Filtra em memória os que estão abaixo do mínimo
+    const lowStock = products.filter(p => p.stock_qty < p.stock_min);
 
-  return {
-    total: lowStock.length,
-    data:  lowStock.sort((a, b) => a.stock_qty - b.stock_qty),
-  };
-}
-  
+    return {
+      total: lowStock.length,
+      data: lowStock.sort((a, b) => a.stock_qty - b.stock_qty),
+    };
+  }
+
 
   // ─── Vincular código de barras ao produto ──────────────────
   async registerBarcode(productId: string, input: RegisterBarcodeInput) {
@@ -276,8 +272,8 @@ async lowStockAlert() {
     return this.db.productBarcode.create({
       data: {
         product_id: productId,
-        code:       input.code,
-        unit:       input.unit,
+        code: input.code,
+        unit: input.unit,
       },
     });
   }
