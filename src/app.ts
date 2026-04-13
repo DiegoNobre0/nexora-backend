@@ -9,7 +9,7 @@ import { Server } from 'socket.io';
 import { authRoutes }             from './modules/master-module/auth/auth.routes';
 import { companiesRoutes }        from './modules/master-module/companies/companies.routes';
 import { usersRoutes }            from './modules/master-module/users/users.routes';
-import { plansRoutes }            from './modules/master-module/plans/plans.routes';
+
 import { whatsappWebhookRoutes }  from './modules/master-module/whatsappWebhook/whatsAppWebhook.routes';
 
 // ── Business Module ────────────────────────────────────────
@@ -25,6 +25,7 @@ import { taxesRoutes }        from './modules/business-module/taxes/taxes.routes
 import { deliveryRoutes }     from './modules/business-module/delivery/delivery.routes';
 import { configsRoutes }      from './modules/business-module/configs/configs.routes';
 import { AppError, UpgradeRequiredError } from './shared/errors/AppError';
+import { plansRoutes } from './modules/master-module/plans/plans.routes';
 
 // ──────────────────────────────────────────────────────────
 export const app = fastify({ logger: true });
