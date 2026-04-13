@@ -1,6 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { getBusinessClient } from '../../database/business-manager';
 import { masterDb } from '../../database/master';
+import { SubscriptionsService } from 'src/modules/master-module/subscriptions/subscriptions.service';
 
 // ── Tipagem do payload do JWT ──────────────────────────────
 interface JwtPayload {
@@ -34,25 +35,38 @@ export async function businessMiddleware(
     const token = authHeader.replace('Bearer ', '');
     const decoded = await request.server.jwt.verify<JwtPayload>(token);
 
-    if (!decoded.business_db_name) {
+    if (!decoded.business_db_name || !decoded.company_id) {
       return reply.status(403).send({ message: 'Empresa não identificada no token.' });
     }
 
-    if (!decoded.company_id) {
-      return reply.status(403).send({ message: 'Empresa inválida no token.' });
-    }
-
-    // Verifica se a empresa ainda está ativa no master
+    // 1. Check de Empresa Ativa (Master)
     const company = await masterDb.company.findUnique({
       where: { id: decoded.company_id },
       select: { is_active: true }
     });
 
     if (!company?.is_active) {
-      return reply.status(403).send({ message: 'Empresa inativa ou suspensa.' });
+      return reply.status(403).send({ 
+        error: 'Forbidden',
+        message: 'Esta conta empresarial está suspensa ou inativa.' 
+      });
     }
 
-    // Injeta o client do banco da empresa e o payload no request
+    // 2. 🔥 NOVO: Check de Assinatura (O Leão de Chácara)
+    const subService = new SubscriptionsService();
+    const sub : any = await subService.getCurrentSubscription(decoded.company_id);
+
+    // Se a assinatura estiver cancelada ou bloqueada por falta de pagamento
+    if (sub.is_locked) {
+      return reply.status(403).send({
+        error: 'SubscriptionLocked',
+        message: 'O acesso ao sistema foi bloqueado. Verifique sua assinatura ou pagamentos pendentes.',
+        days_expired: sub.is_expired ? Math.abs(sub.days_remaining) : 0,
+        upgrade_url: '/admin/billing' // Sugestão para o Front-end redirecionar
+      });
+    }
+
+    // 3. Injeta o client do banco da empresa e o payload no request
     request.businessDb  = getBusinessClient(decoded.business_db_name);
     request.jwtPayload  = decoded;
 

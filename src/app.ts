@@ -26,6 +26,9 @@ import { deliveryRoutes }     from './modules/business-module/delivery/delivery.
 import { configsRoutes }      from './modules/business-module/configs/configs.routes';
 import { AppError, UpgradeRequiredError } from './shared/errors/AppError';
 import { plansRoutes } from './modules/master-module/plans/plans.routes';
+import { analyticsRoutes } from './modules/business-module/analytics/analytics.routes';
+import { sub } from 'date-fns';
+import { subscriptionsRoutes } from './modules/master-module/subscriptions/subscriptions.routes';
 
 // ──────────────────────────────────────────────────────────
 export const app = fastify({ logger: true });
@@ -61,6 +64,7 @@ app.register(companiesRoutes,       { prefix: '/companies' });
 app.register(usersRoutes,           { prefix: '/users' });
 app.register(plansRoutes,           { prefix: '/plans' });
 app.register(whatsappWebhookRoutes, { prefix: '/whatsapp-webhook' });
+app.register(subscriptionsRoutes,         { prefix: '/subscriptions' });
 
 // ── Rotas Business (com tenant via middleware) ─────────────
 // Todas passam pelo businessMiddleware que resolve o DB correto
@@ -75,6 +79,7 @@ app.register(cashRegisterRoutes, { prefix: '/cash-register' });
 app.register(taxesRoutes,        { prefix: '/taxes' });
 app.register(deliveryRoutes,     { prefix: '/delivery' });
 app.register(configsRoutes,      { prefix: '/configs' });
+app.register(analyticsRoutes,     { prefix: '/analytics' });
 
 // ── Tratamento global de erros ────────────────────────────
 app.setErrorHandler((error, request, reply) => {
