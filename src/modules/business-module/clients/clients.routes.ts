@@ -1,17 +1,46 @@
 import type { FastifyInstance } from 'fastify';
-import { ClientsController } from './clients.controller';
 import { businessMiddleware } from '../../../shared/middlewares/business.middleware';
+import {
+  listClients,
+  getClientById,
+  getClientByDocument,
+  createClient,
+  updateClient,
+  blockClient,
+  unblockClient,
+  mergeClients,
+  addAddress,
+  updateAddress,
+  deleteAddress,
+  exportClientsCSV
+} from './clients.controller';
 
-const clientsController = new ClientsController();
+// ─────────────────────────────────────────────────────────────
+// ROTAS — Clients
+//
+// Prefixo registrado no app.ts: /clients
+// ─────────────────────────────────────────────────────────────
 
 export async function clientsRoutes(app: FastifyInstance) {
   app.addHook('preHandler', businessMiddleware);
 
-  app.post('/', clientsController.handleCreate);
-  app.get('/', clientsController.handleList);
+  // ── Rotas Estáticas / Ações ──
+  app.get('/export', exportClientsCSV);
+  app.post('/merge', mergeClients);
+  app.get('/document/:doc', getClientByDocument);
+
+  // ── CRUD Base ──
+  app.get(   '/', listClients);
+  app.get(   '/:id', getClientById);
+  app.post(  '/', createClient);
+  app.put(   '/:id', updateClient);
   
-  // Rotas específicas por ID
-  app.get('/:id', clientsController.handleGetById);
-  app.patch('/:id', clientsController.handleUpdate);
-  app.delete('/:id', clientsController.handleDelete);
+  // ── Bloqueios ──
+  app.patch( '/:id/block', blockClient);
+  app.patch( '/:id/unblock', unblockClient);
+
+  // ── Endereços ──
+  app.post(  '/:id/addresses', addAddress);
+  app.put(   '/addresses/:addressId', updateAddress);
+  app.delete('/addresses/:addressId', deleteAddress);
 }

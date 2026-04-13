@@ -1,12 +1,21 @@
 import type { FastifyInstance } from 'fastify';
-import { ConfigsController } from './configs.controller';
-import { businessMiddleware } from 'src/shared/middlewares/business.middleware';
+import { businessMiddleware } from '../../../shared/middlewares/business.middleware';
+import {
+  getConfig,
+  updateConfig,
+  getStatus,
+} from './configs.controller';
 
-const configsController = new ConfigsController();
+// ─────────────────────────────────────────────────────────────
+// ROTAS — Configs
+//
+// Prefixo registrado no app.ts: /configs
+// ─────────────────────────────────────────────────────────────
 
 export async function configsRoutes(app: FastifyInstance) {
   app.addHook('preHandler', businessMiddleware);
 
-  app.get('/', configsController.show);
-  app.patch('/', configsController.update);
+  app.get('/',       getConfig);     // Pega os dados brutos de configuração
+  app.put('/',       updateConfig);  // Atualiza as configurações (não precisa de ID)
+  app.get('/status', getStatus);     // Retorna { is_open: boolean } para o PWA/Front
 }
