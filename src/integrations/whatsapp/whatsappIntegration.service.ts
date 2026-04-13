@@ -1,8 +1,8 @@
 import axios, { type AxiosInstance } from 'axios';
-import type { 
-  TemplateComponent, 
-  InteractiveSection, 
-  InteractiveButton 
+import type {
+  TemplateComponent,
+  InteractiveSection,
+  InteractiveButton
 } from './whatsapp.types';
 
 // ─────────────────────────────────────────────────────────────
@@ -143,11 +143,30 @@ export class WhatsAppIntegrationService {
     }
   }
 
+
+  //enviar a mensagem interativa com image
+  async sendInteractiveImageMessage(to: string, bodyText: string, imageUrl: string, buttons: { id: string, title: string }[]) {
+    return this.sendPayload(to, {
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        header: { type: 'image', image: { link: imageUrl } },
+        body: { text: bodyText },
+        action: {
+          buttons: buttons.map(btn => ({
+            type: 'reply',
+            reply: { id: btn.id, title: btn.title }
+          }))
+        }
+      }
+    });
+  }
+
   // ─── Helper Privado: Motor de Envio Seguro ─────────────────
 
   private async sendPayload(to: string, payload: any) {
     const cleanPhone = to.replace(/\D/g, ''); // Garante que só vão números
-    
+
     try {
       const response = await this.http.post(`/${this.phoneNumberId}/messages`, {
         messaging_product: 'whatsapp',
@@ -155,7 +174,7 @@ export class WhatsAppIntegrationService {
         to: cleanPhone,
         ...payload,
       });
-      
+
       return response.data;
     } catch (error: any) {
       this.handleMetaError(error, 'Send Payload');
@@ -178,4 +197,7 @@ export class WhatsAppIntegrationService {
       console.error(`[Network/Unknown Error - ${context}]`, error.message);
     }
   }
+
+
+
 }

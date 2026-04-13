@@ -4,33 +4,44 @@ import fastifyJwt from '@fastify/jwt';
 import { z } from 'zod';
 import socketio from 'fastify-socket.io';
 import { Server } from 'socket.io';
+import rateLimit from '@fastify/rate-limit';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
+import * as Sentry from "@sentry/node"; // 1. Importa o Sentry
 
 // ── Master Module ──────────────────────────────────────────
-import { authRoutes }             from './modules/master-module/auth/auth.routes';
-import { companiesRoutes }        from './modules/master-module/companies/companies.routes';
-import { usersRoutes }            from './modules/master-module/users/users.routes';
-
-import { whatsappWebhookRoutes }  from './modules/master-module/whatsappWebhook/whatsAppWebhook.routes';
+import { authRoutes } from './modules/master-module/auth/auth.routes';
+import { companiesRoutes } from './modules/master-module/companies/companies.routes';
+import { usersRoutes } from './modules/master-module/users/users.routes';
+import { plansRoutes } from './modules/master-module/plans/plans.routes';
+import { subscriptionsRoutes } from './modules/master-module/subscriptions/subscriptions.routes';
+import { whatsappWebhookRoutes } from './modules/master-module/whatsappWebhook/whatsAppWebhook.routes';
 
 // ── Business Module ────────────────────────────────────────
-import { categoriesRoutes }   from './modules/business-module/categories/categories.routes';
-import { productsRoutes }     from './modules/business-module/products/products.routes';
-import { clientsRoutes }      from './modules/business-module/clients/clients.routes';
-import { employeesRoutes }    from './modules/business-module/employees/employees.routes';
-import { leadsRoutes }        from './modules/business-module/leads/leads.routes';
-import { ordersRoutes }       from './modules/business-module/orders/orders.routes';
-import { paymentsRoutes }     from './modules/business-module/payments/payments.routes';
+import { categoriesRoutes } from './modules/business-module/categories/categories.routes';
+import { productsRoutes } from './modules/business-module/products/products.routes';
+import { clientsRoutes } from './modules/business-module/clients/clients.routes';
+import { employeesRoutes } from './modules/business-module/employees/employees.routes';
+import { leadsRoutes } from './modules/business-module/leads/leads.routes';
+import { ordersRoutes } from './modules/business-module/orders/orders.routes';
+import { paymentsRoutes } from './modules/business-module/payments/payments.routes';
 import { cashRegisterRoutes } from './modules/business-module/cash-register/cash-register.routes';
-import { taxesRoutes }        from './modules/business-module/taxes/taxes.routes';
-import { deliveryRoutes }     from './modules/business-module/delivery/delivery.routes';
-import { configsRoutes }      from './modules/business-module/configs/configs.routes';
-import { AppError, UpgradeRequiredError } from './shared/errors/AppError';
-import { plansRoutes } from './modules/master-module/plans/plans.routes';
+import { taxesRoutes } from './modules/business-module/taxes/taxes.routes';
+import { deliveryRoutes } from './modules/business-module/delivery/delivery.routes';
+import { configsRoutes } from './modules/business-module/configs/configs.routes';
 import { analyticsRoutes } from './modules/business-module/analytics/analytics.routes';
-import { sub } from 'date-fns';
-import { subscriptionsRoutes } from './modules/master-module/subscriptions/subscriptions.routes';
 
-// ──────────────────────────────────────────────────────────
+import { AppError, UpgradeRequiredError } from './shared/errors/AppError';
+import { masterDb } from './database/master';
+
+// 2. Inicializa o Sentry antes de criar o app (Essencial para produção)
+if (process.env.SENTRY_DSN && process.env.NODE_ENV === 'production') {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    tracesSampleRate: 1.0,
+  });
+}
+
 export const app = fastify({ logger: true });
 
 declare module 'fastify' {
@@ -39,7 +50,32 @@ declare module 'fastify' {
   }
 }
 
-// ── Plugins ───────────────────────────────────────────────
+// ── REGISTRO DE PLUGINS (Ordem importa!) ───────────────────
+
+// Swagger primeiro para mapear as rotas
+app.register(swagger, {
+  openapi: {
+    info: { title: 'Nexora API', version: '1.0.0', description: 'Documentação do ecossistema Nexora' },
+    components: {
+      securitySchemes: {
+        bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }
+      }
+    }
+  }
+});
+
+app.register(swaggerUi, { routePrefix: '/docs' });
+
+app.register(rateLimit, {
+  max: 100,
+  timeWindow: '1 minute',
+  errorResponseBuilder: (request, context) => ({
+    statusCode: 429,
+    error: 'Too Many Requests',
+    message: `Vá com calma! Você só pode fazer ${context.max} requisições por minuto.`
+  })
+});
+
 app.register(socketio, {
   cors: { origin: '*', methods: ['GET', 'POST'] }
 });
@@ -50,24 +86,28 @@ app.register(fastifyJwt, {
   secret: process.env.JWT_SECRET || 'super_secret_nexora_key_2026'
 });
 
-// ── Health check ──────────────────────────────────────────
-app.get('/health', async () => ({
-  status: 'ok',
-  name: 'Nexora API',
-  version: '1.0.0',
-  timestamp: new Date().toISOString(),
-}));
+// ── ROTAS ──────────────────────────────────────────────────
 
-// ── Rotas Master (sem tenant) ─────────────────────────────
+// Rota de Healthcheck
+app.get('/health', async (request, reply) => {
+  const dbStatus = await masterDb.$queryRaw`SELECT 1`.then(() => 'up').catch(() => 'down');
+  return {
+    status: 'ok',
+    uptime: process.uptime(),
+    db: dbStatus,
+    timestamp: new Date().toISOString()
+  };
+});
+
+// Master Routes
 app.register(authRoutes,            { prefix: '/auth' });
 app.register(companiesRoutes,       { prefix: '/companies' });
 app.register(usersRoutes,           { prefix: '/users' });
 app.register(plansRoutes,           { prefix: '/plans' });
+app.register(subscriptionsRoutes,   { prefix: '/subscriptions' });
 app.register(whatsappWebhookRoutes, { prefix: '/whatsapp-webhook' });
-app.register(subscriptionsRoutes,         { prefix: '/subscriptions' });
 
-// ── Rotas Business (com tenant via middleware) ─────────────
-// Todas passam pelo businessMiddleware que resolve o DB correto
+// Business Routes
 app.register(categoriesRoutes,   { prefix: '/categories' });
 app.register(productsRoutes,     { prefix: '/products' });
 app.register(clientsRoutes,      { prefix: '/clients' });
@@ -77,21 +117,14 @@ app.register(ordersRoutes,       { prefix: '/orders' });
 app.register(paymentsRoutes,     { prefix: '/payments' });
 app.register(cashRegisterRoutes, { prefix: '/cash-register' });
 app.register(taxesRoutes,        { prefix: '/taxes' });
-app.register(deliveryRoutes,     { prefix: '/delivery' });
+  app.register(deliveryRoutes,     { prefix: '/delivery' });
 app.register(configsRoutes,      { prefix: '/configs' });
-app.register(analyticsRoutes,     { prefix: '/analytics' });
+app.register(analyticsRoutes,    { prefix: '/analytics' });
 
-// ── Tratamento global de erros ────────────────────────────
+// ── TRATAMENTO GLOBAL DE ERROS (Consolidado) ───────────────
+
 app.setErrorHandler((error, request, reply) => {
-  // Zod — erro de validação
-  if (error instanceof z.ZodError) {
-    return reply.status(400).send({
-      message: 'Erro de validação nos dados enviados.',
-      errors: error.flatten().fieldErrors,
-    });
-  }
-app.setErrorHandler((error, request, reply) => {
-  // Zod
+  // Erro de Validação (Zod)
   if (error instanceof z.ZodError) {
     return reply.status(400).send({
       message: 'Erro de validação nos dados enviados.',
@@ -99,7 +132,7 @@ app.setErrorHandler((error, request, reply) => {
     });
   }
 
-  // AppError (todos os erros customizados)
+  // Erros customizados da aplicação (AppError)
   if (error instanceof AppError) {
     return reply.status(error.statusCode).send({
       message: error.message,
@@ -111,20 +144,19 @@ app.setErrorHandler((error, request, reply) => {
     });
   }
 
-  // JWT
+  // Erros de JWT (Não autorizado)
   const fastifyError = error as FastifyError;
-  if (fastifyError.code?.startsWith('FST_JWT')) {
+  if (fastifyError.code?.startsWith('FST_JWT') || fastifyError.statusCode === 401) {
     return reply.status(401).send({ message: 'Sessão inválida ou expirada.' });
   }
 
+  // Erros 500 (Críticos) -> Manda pro Sentry e Loga
   request.log.error(error);
-  return reply.status(500).send({
-    message: 'Erro interno do servidor. Tente novamente mais tarde.',
-  });
-});
+  
+  if (process.env.NODE_ENV === 'production') {
+    Sentry.captureException(error);
+  }
 
-  // Erro genérico — loga internamente, não expõe detalhes
-  request.log.error(error);
   return reply.status(500).send({
     message: 'Erro interno do servidor. Tente novamente mais tarde.',
   });

@@ -6,6 +6,7 @@ import type {
   CreateOrderInput, UpdateOrderStatusInput, CancelOrderInput,
   AssignDeliveryInput, ListOrdersInput, CalculateTotalInput, OrderItemInput
 } from './orders.schema';
+import { PromotionsService } from '../promotions/promotions.service';
 
 // ─────────────────────────────────────────────────────────────
 // SERVICE — Orders
@@ -86,7 +87,11 @@ export class OrdersService {
       type: input.type,
     });
 
-    const finalTotal = calculation.total - input.discount;
+    const promoService = new PromotionsService(this.db);
+    const { processedItems, totalDiscount } = await promoService.applyPromotionsToItems(calculation.items);
+
+    const finalTotal = (calculation.subtotal + calculation.delivery_fee) - (totalDiscount + input.discount);
+    
     if (finalTotal < 0) throw new ValidationError('Desconto não pode ser maior que o total do pedido.');
 
     // Inicia a Transação: Cria Pedido + Cria Itens + Baixa Estoque
