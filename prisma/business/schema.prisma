@@ -1,113 +1,387 @@
-// prisma/business/business.prisma
-
-generator businessClient { 
+generator businessClient {
   provider = "prisma-client-js"
   output   = "../../node_modules/@prisma/business-client"
 }
 
-
-datasource businessdb { 
+datasource businessdb {
   provider = "postgresql"
-  url      = env("BUSINESS_DATABASE_URL") 
+  url      = env("BUSINESS_DATABASE_URL")
 }
 
 // ------------------------------------------------------
-// 1. CLIENTES (CRM)
+// 1. CATEGORIAS DE PRODUTO
+// ------------------------------------------------------
+model Category {
+  id         String    @id @default(uuid())
+  name       String
+  slug       String    @unique
+  is_active  Boolean   @default(true)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+
+  products Product[]
+
+  @@map("categories")
+}
+
+// ------------------------------------------------------
+// 2. PRODUTOS (substituiu Service)
+// ------------------------------------------------------
+model Product {
+  id               String   @id @default(uuid())
+  category_id      String?
+  name             String
+  description      String?  @businessdb.Text
+  price            Decimal  @businessdb.Decimal(10, 2)
+  price_wholesale  Decimal? @businessdb.Decimal(10, 2)
+  cost_price       Decimal? @businessdb.Decimal(10, 2)
+  stock_qty        Int      @default(0)
+  stock_min        Int      @default(0)
+  ncm              String?
+  cfop             String?
+  unit             String   @default("UN")
+  is_active        Boolean  @default(true)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  category   Category?        @relation(fields: [category_id], references: [id])
+  barcodes   ProductBarcode[]
+  order_items OrderItem[]
+  commissions EmployeeCommission[]
+
+  @@map("products")
+}
+
+// ------------------------------------------------------
+// 3. CÓDIGOS DE BARRAS (múltiplos por produto)
+// ------------------------------------------------------
+model ProductBarcode {
+  id         String  @id @default(uuid())
+  product_id String
+  code       String  @unique
+  unit       String  @default("UN")
+
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@map("product_barcodes")
+}
+
+// ------------------------------------------------------
+// 4. CLIENTES PF + PJ
 // ------------------------------------------------------
 model Client {
-  id         String   @id @default(uuid())
-  name       String
-  phone      String   @unique
-  birth_date DateTime?
-  notes      String?  @businessdb.Text
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  id              String      @id @default(uuid())
+  type            ClientType  @default(PF)
 
-  calendars Calendar[]
+  // PF
+  name            String
+  cpf             String?     @unique
+  birth_date      DateTime?
+
+  // PJ
+  company_name    String?
+  trade_name      String?
+  cnpj            String?     @unique
+  state_reg       String?
+  municipal_reg   String?
+  contact_name    String?
+  contact_role    String?
+
+  // Compartilhado
+  phone           String      @unique
+  email           String?
+  notes           String?     @businessdb.Text
+  is_blocked      Boolean     @default(false)
+  block_reason    String?
+  credit_limit    Decimal?    @businessdb.Decimal(10, 2)
+  credit_balance  Decimal     @default(0) @businessdb.Decimal(10, 2)
+  payment_terms   Int         @default(0)
+  price_table     PriceTable  @default(RETAIL)
+  loyalty_points  Int         @default(0)
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+
+  addresses  Address[]
+  orders     Order[]
+  leads      Lead[]
+  payments   Payment[]
 
   @@map("clients")
 }
 
 // ------------------------------------------------------
-// 2. PROFISSIONAIS (Equipe)
+// 5. ENDEREÇOS (múltiplos por cliente)
+// ------------------------------------------------------
+model Address {
+  id          String  @id @default(uuid())
+  client_id   String
+  label       String  @default("Principal")
+  zip_code    String
+  street      String
+  number      String
+  complement  String?
+  district    String
+  city        String
+  state       String
+  is_default  Boolean @default(false)
+
+  client Client @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@map("addresses")
+}
+
+// ------------------------------------------------------
+// 6. LEADS (captação via WhatsApp)
+// ------------------------------------------------------
+model Lead {
+  id            String         @id @default(uuid())
+  phone         String
+  name          String?
+  type          ClientType?
+  company_name  String?
+  email         String?
+  interest      String?
+  source        LeadSource     @default(WHATSAPP)
+  score         Int            @default(0)
+  temperature   LeadTemp       @default(COLD)
+  status        LeadStatus     @default(NEW)
+  assignee_id   String?
+  notes         String?        @businessdb.Text
+  last_contact  DateTime?
+  converted_at  DateTime?
+  client_id     String?
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+
+  client     Client?       @relation(fields: [client_id], references: [id])
+  assignee   Employee?     @relation(fields: [assignee_id], references: [id])
+  follow_ups LeadFollowUp[]
+
+  @@map("leads")
+}
+
+model LeadFollowUp {
+  id         String   @id @default(uuid())
+  lead_id    String
+  message    String   @businessdb.Text
+  template   String?
+  sent_at    DateTime @default(now())
+  responded  Boolean  @default(false)
+
+  lead Lead @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+
+  @@map("lead_follow_ups")
+}
+
+// ------------------------------------------------------
+// 7. FUNCIONÁRIOS / OPERADORES
 // ------------------------------------------------------
 model Employee {
   id         String   @id @default(uuid())
   name       String
   phone      String?
+  email      String?
+  role       String?
   is_active  Boolean  @default(true)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  services     EmployeeService[]
-  calendars Calendar[]
+  commissions  EmployeeCommission[]
+  cash_registers CashRegister[]
+  leads        Lead[]
+  orders       Order[]
 
   @@map("employees")
 }
 
 // ------------------------------------------------------
-// 3. SERVIÇOS
+// 8. COMISSÃO POR VENDA (substituiu EmployeeService)
 // ------------------------------------------------------
-model Service {
-  id               String   @id @default(uuid())
-  name             String
-  description      String? @businessdb.Text
-  price            Decimal  @businessdb.Decimal(10, 2)
-  duration_minutes Int      
-  is_active        Boolean  @default(true)
-
-  employees    EmployeeService[]
-  calendars Calendar[]
-
-  @@map("services")
-}
-
-// ------------------------------------------------------
-// 4. RELAÇÃO PROFISSIONAL <-> SERVIÇO (Comissões)
-// ------------------------------------------------------
-model EmployeeService {
+model EmployeeCommission {
   employee_id           String
-  service_id            String
-  commission_percentage Decimal @businessdb.Decimal(5, 2) 
+  product_id            String
+  commission_percentage Decimal @businessdb.Decimal(5, 2)
 
   employee Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
-  service  Service  @relation(fields: [service_id], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
-  @@id([employee_id, service_id])
-  @@map("employee_services")
+  @@id([employee_id, product_id])
+  @@map("employee_commissions")
 }
 
 // ------------------------------------------------------
-// 5. Calendar (O coração do sistema)
+// 9. PEDIDOS (substituiu Calendar)
 // ------------------------------------------------------
-model Calendar {
-  id          String            @id @default(uuid())
-  client_id   String
-  employee_id String
-  service_id  String
-  start_time  DateTime
-  end_time    DateTime
-  status      CalendarStatus @default(PENDING)
-  notes       String? @businessdb.Text
-  created_at  DateTime          @default(now())
-  updated_at  DateTime          @updatedAt
+model Order {
+  id               String        @id @default(uuid())
+  client_id        String?
+  employee_id      String?
+  address_id       String?
+  channel          OrderChannel  @default(WHATSAPP)
+  status           OrderStatus   @default(PENDING)
+  type             OrderType     @default(DELIVERY)
+  subtotal         Decimal       @businessdb.Decimal(10, 2)
+  discount         Decimal       @default(0) @businessdb.Decimal(10, 2)
+  delivery_fee     Decimal       @default(0) @businessdb.Decimal(10, 2)
+  total            Decimal       @businessdb.Decimal(10, 2)
+  notes            String?       @businessdb.Text
+  estimated_at     DateTime?
+  delivered_at     DateTime?
+  canceled_at      DateTime?
+  cancel_reason    String?
+  is_proforma      Boolean       @default(false)
+  proforma_expires DateTime?
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
 
-  client   Client   @relation(fields: [client_id], references: [id])
-  employee Employee @relation(fields: [employee_id], references: [id])
-  service  Service  @relation(fields: [service_id], references: [id])
+  client   Client?   @relation(fields: [client_id], references: [id])
+  employee Employee? @relation(fields: [employee_id], references: [id])
+  address  Address?  @relation(fields: [address_id], references: [id])
+  items    OrderItem[]
+  payments Payment[]
 
-  @@map("appointments")
+  @@map("orders")
 }
 
 // ------------------------------------------------------
-// 6. CONFIGURAÇÕES (WhatsApp e IA da Empresa)
+// 10. ITENS DO PEDIDO
+// ------------------------------------------------------
+model OrderItem {
+  id          String  @id @default(uuid())
+  order_id    String
+  product_id  String
+  quantity    Int
+  unit_price  Decimal @businessdb.Decimal(10, 2)
+  discount    Decimal @default(0) @businessdb.Decimal(10, 2)
+  total       Decimal @businessdb.Decimal(10, 2)
+  notes       String?
+
+  order   Order   @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id])
+
+  @@map("order_items")
+}
+
+// ------------------------------------------------------
+// 11. PAGAMENTOS
+// ------------------------------------------------------
+model Payment {
+  id              String        @id @default(uuid())
+  order_id        String?
+  client_id       String?
+  method          PaymentMethod
+  amount          Decimal       @businessdb.Decimal(10, 2)
+  fee             Decimal       @default(0) @businessdb.Decimal(10, 2)
+  net_amount      Decimal       @businessdb.Decimal(10, 2)
+  status          PaymentStatus @default(PENDING)
+  gateway_id      String?
+  boleto_url      String?
+  boleto_barcode  String?
+  boleto_due_date DateTime?
+  pix_qr_code     String?
+  pix_key         String?
+  paid_at         DateTime?
+  refunded_at     DateTime?
+  refund_reason   String?
+  installments    Int           @default(1)
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  order  Order?  @relation(fields: [order_id], references: [id])
+  client Client? @relation(fields: [client_id], references: [id])
+  cash_movements CashMovement[]
+
+  @@map("payments")
+}
+
+// ------------------------------------------------------
+// 12. CAIXA
+// ------------------------------------------------------
+model CashRegister {
+  id               String          @id @default(uuid())
+  employee_id      String
+  status           CashRegisterStatus @default(OPEN)
+  opening_balance  Decimal         @businessdb.Decimal(10, 2)
+  closing_balance  Decimal?        @businessdb.Decimal(10, 2)
+  system_balance   Decimal?        @businessdb.Decimal(10, 2)
+  difference       Decimal?        @businessdb.Decimal(10, 2)
+  diff_reason      String?
+  opened_at        DateTime        @default(now())
+  closed_at        DateTime?
+  notes            String?
+
+  employee  Employee       @relation(fields: [employee_id], references: [id])
+  movements CashMovement[]
+
+  @@map("cash_registers")
+}
+
+model CashMovement {
+  id               String         @id @default(uuid())
+  cash_register_id String
+  payment_id       String?
+  type             MovementType
+  amount           Decimal        @businessdb.Decimal(10, 2)
+  description      String
+  created_at       DateTime       @default(now())
+
+  cash_register CashRegister @relation(fields: [cash_register_id], references: [id], onDelete: Cascade)
+  payment       Payment?     @relation(fields: [payment_id], references: [id])
+
+  @@map("cash_movements")
+}
+
+// ------------------------------------------------------
+// 13. TAXAS (cartão, pix, boleto, frete)
+// ------------------------------------------------------
+model Tax {
+  id            String   @id @default(uuid())
+  name          String
+  type          TaxType
+  method        PaymentMethod?
+  brand         String?
+  installments  Int?
+  rate          Decimal  @businessdb.Decimal(6, 4)
+  fixed_amount  Decimal  @default(0) @businessdb.Decimal(10, 2)
+  pass_to_client Boolean @default(false)
+  is_active     Boolean  @default(true)
+
+  @@map("taxes")
+}
+
+// ------------------------------------------------------
+// 14. FRETE
+// ------------------------------------------------------
+model DeliveryZone {
+  id           String       @id @default(uuid())
+  name         String
+  type         ZoneType
+  value        String
+  fee          Decimal      @businessdb.Decimal(10, 2)
+  free_above   Decimal?     @businessdb.Decimal(10, 2)
+  min_order    Decimal?     @businessdb.Decimal(10, 2)
+  is_active    Boolean      @default(true)
+
+  @@map("delivery_zones")
+}
+
+// ------------------------------------------------------
+// 15. CONFIGURAÇÕES (Meta Cloud API + IA + horários)
 // ------------------------------------------------------
 model Config {
-  id               String  @id @default(uuid())
-  whatsapp_number  String?
-  whatsapp_session String? 
-  ai_prompt        String? @businessdb.Text 
-  auto_reply       Boolean @default(true) 
+  id                    String   @id @default(uuid())
+  whatsapp_number       String?
+  whatsapp_token        String?
+  whatsapp_phone_id     String?
+  whatsapp_waba_id      String?
+  ai_prompt             String?  @businessdb.Text
+  auto_reply            Boolean  @default(true)
+  operating_hours       Json?
+  holiday_dates         Json?
+  out_of_hours_message  String?  @businessdb.Text
+  min_order_amount      Decimal? @businessdb.Decimal(10, 2)
+  free_delivery_above   Decimal? @businessdb.Decimal(10, 2)
 
   @@map("configs")
 }
@@ -115,10 +389,105 @@ model Config {
 // ------------------------------------------------------
 // ENUMS
 // ------------------------------------------------------
-enum CalendarStatus {
-  PENDING   
-  CONFIRMED 
-  COMPLETED 
-  CANCELED  
-  NO_SHOW   
+enum ClientType {
+  PF
+  PJ
+}
+
+enum PriceTable {
+  RETAIL
+  WHOLESALE
+  DISTRIBUTOR
+  CUSTOM
+}
+
+enum LeadSource {
+  WHATSAPP
+  WEBSITE
+  INSTAGRAM
+  REFERRAL
+  MANUAL
+}
+
+enum LeadTemp {
+  HOT
+  WARM
+  COLD
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  NURTURING
+  CONVERTED
+  ARCHIVED
+}
+
+enum OrderChannel {
+  WHATSAPP
+  WEBSITE
+  COUNTER
+  INSTAGRAM
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  IN_DELIVERY
+  DELIVERED
+  CANCELED
+}
+
+enum OrderType {
+  DELIVERY
+  PICKUP
+  COUNTER
+}
+
+enum PaymentMethod {
+  PIX
+  CREDIT_CARD
+  DEBIT_CARD
+  BOLETO
+  CASH
+  VR
+  VA
+  STORE_CREDIT
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+  CANCELED
+  OVERDUE
+}
+
+enum CashRegisterStatus {
+  OPEN
+  CLOSED
+}
+
+enum MovementType {
+  SALE
+  WITHDRAWAL
+  SUPPLY
+  MANUAL_IN
+  MANUAL_OUT
+  REFUND
+}
+
+enum TaxType {
+  PERCENTAGE
+  FIXED
+  MIXED
+}
+
+enum ZoneType {
+  RADIUS_KM
+  DISTRICT
+  ZIP_CODE
+  FIXED
 }

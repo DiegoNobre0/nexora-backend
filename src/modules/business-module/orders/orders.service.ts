@@ -13,7 +13,7 @@ import {
   endOfMonth
 } from 'date-fns';
 
-export class CalendarService {
+export class OrderService {
   async create(dbBusiness: BusinessClient, data: any) {
     const { employee_id, start_time, end_time } = data;
 

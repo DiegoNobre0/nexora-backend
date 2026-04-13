@@ -1,13 +1,13 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { CalendarService } from './calendar.service';
+import { OrderService } from './orders.service';
 
-const calendarService = new CalendarService();
+const orderService = new OrderService();
 
-export class CalendarController {
+export class OrderController {
   async handleCreate(request: FastifyRequest, reply: FastifyReply) {
     try {
-      const calendar = await calendarService.create(request.businessDb, request.body);
-      return reply.status(201).send(calendar);
+      const order = await orderService.create(request.businessDb, request.body);
+      return reply.status(201).send(order);
     } catch (error: any) {
       return reply.status(400).send({ error: error.message });
     }
@@ -18,22 +18,22 @@ async handleList(request: FastifyRequest, reply: FastifyReply) {
   const { date, month } = request.query as { date?: string, month?: string };
 
   // 2. Passamos como um objeto para o Service (Isso resolve o erro de tipo!)
-  const calendars = await calendarService.list(request.businessDb, { 
+  const orders = await orderService.list(request.businessDb, { 
     date, 
     month 
   });
 
-  return reply.send(calendars);
+  return reply.send(orders);
 }
 
   async handleStatusUpdate(request: FastifyRequest, reply: FastifyReply) {
     const { id } = request.params as { id: string };
     const { status } = request.body as { status: string };
-    const calendar = await calendarService.updateStatus(request.businessDb, id, status);
-    return reply.send(calendar);
+    const order  = await orderService.updateStatus(request.businessDb, id, status);
+    return reply.send(order);
   }
 
-// No calendar.controller.ts
+// No order.controller.ts
 
 async handleAvailability(request: FastifyRequest, reply: FastifyReply) {
   const { employee_id, date } = request.query as { employee_id: string; date: string };
@@ -42,7 +42,7 @@ async handleAvailability(request: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send({ error: 'employee_id e date são obrigatórios.' });
   }
 
-  const availability = await calendarService.getAvailability(
+  const availability = await orderService.getAvailability(
     request.businessDb, 
     employee_id, 
     date

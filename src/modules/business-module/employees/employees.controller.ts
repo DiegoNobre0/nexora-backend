@@ -1,42 +1,52 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { EmployeesService } from './employees.service';
+import { createEmployeeSchema, updateEmployeeSchema, listEmployeesSchema } from './employees.schema';
 
+// ─────────────────────────────────────────────────────────────
+// CONTROLLER — Employees
+//
+// Apenas valida entrada e delega para o service.
+// ─────────────────────────────────────────────────────────────
 
-const employeesService = new EmployeesService();
+// GET /employees
+export async function listEmployees(request: FastifyRequest, reply: FastifyReply) {
+  const filters = listEmployeesSchema.parse(request.query);
+  const service = new EmployeesService(request.businessDb);
+  return reply.status(200).send(await service.list(filters));
+}
 
-export class EmployeesController {
-  async create(request: FastifyRequest, reply: FastifyReply) {
-    const db = request.businessDb; 
-    const employee = await employeesService.create(db, request.body as any);
-    return reply.status(201).send(employee);
-  }
+// GET /employees/:id
+export async function getEmployee(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const service = new EmployeesService(request.businessDb);
+  return reply.status(200).send(await service.findById(id));
+}
 
-  async list(request: FastifyRequest, reply: FastifyReply) {
-    const db = request.businessDb;
-    const employees = await employeesService.listAll(db);
-    return reply.send(employees);
-  }
+// POST /employees
+export async function createEmployee(request: FastifyRequest, reply: FastifyReply) {
+  const body    = createEmployeeSchema.parse(request.body);
+  const service = new EmployeesService(request.businessDb);
+  return reply.status(201).send(await service.create(body));
+}
 
-  async getById(request: FastifyRequest, reply: FastifyReply) {
-    const { id } = request.params as { id: string };
-    const db = request.businessDb;
-    const employee = await employeesService.findById(db, id);
-    
-    if (!employee) return reply.status(404).send({ error: 'Profissional não encontrado' });
-    return reply.send(employee);
-  }
+// PUT /employees/:id
+export async function updateEmployee(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const body    = updateEmployeeSchema.parse(request.body);
+  const service = new EmployeesService(request.businessDb);
+  return reply.status(200).send(await service.update(id, body));
+}
 
-  async update(request: FastifyRequest, reply: FastifyReply) {
-    const { id } = request.params as { id: string };
-    const db = request.businessDb;
-    const employee = await employeesService.update(db, id, request.body as any);
-    return reply.send(employee);
-  }
+// DELETE /employees/:id
+export async function deleteEmployee(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const service = new EmployeesService(request.businessDb);
+  return reply.status(200).send(await service.delete(id));
+}
 
-  async delete(request: FastifyRequest, reply: FastifyReply) {
-    const { id } = request.params as { id: string };
-    const db = request.businessDb;
-    await employeesService.delete(db, id);
-    return reply.status(204).send(); // 204 No Content
-  }
+// PATCH /employees/:id/toggle
+export async function toggleEmployee(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const service = new EmployeesService(request.businessDb);
+  return reply.status(200).send(await service.toggle(id));
 }
