@@ -9,6 +9,6 @@ export async function usersRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authMiddleware);
 
   app.get('/', usersController.list);
-  app.post('/', usersController.create);
+  // app.post('/', usersController.create);
   app.post('/', { preHandler: [requireRole(['OWNER'])] }, usersController.create);
 }

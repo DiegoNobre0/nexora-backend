@@ -8,6 +8,8 @@ import type {
   UpdateStockInput,
   RegisterBarcodeInput,
 } from './products.schema';
+import { StorageService } from 'src/shared/services/storage.service';
+
 
 // ─────────────────────────────────────────────────────────────
 // SERVICE — Products
@@ -43,7 +45,7 @@ export class ProductsService {
 
     // Filtra em memória os produtos abaixo do estoque mínimo
     if (low_stock) {
-      products = products.filter(p => p.stock_qty < p.stock_min);
+      products = products.filter((p: any) => p.stock_qty < p.stock_min);
     }
 
     // Paginação manual após o filtro em memória
@@ -98,15 +100,22 @@ export class ProductsService {
   }
 
   // ─── Criar produto ─────────────────────────────────────────
-  async createProduct(input: CreateProductInput) {
+  async createProduct(input: CreateProductInput, imageBuffer?: Buffer) {
     // Valida se a categoria existe antes de vincular
     if (input.category_id) {
       await this.ensureCategoryExists(input.category_id);
     }
 
+    let imageUrl = input.image_url;
+
+    if (imageBuffer) {
+      imageUrl = await StorageService.uploadImage(imageBuffer, this.tenantDbName || 'default');
+    }
+
     return this.db.product.create({
       data: {
         category_id: input.category_id,
+        image_url: imageUrl,
         name: input.name,
         description: input.description,
         price: input.price,
@@ -127,16 +136,30 @@ export class ProductsService {
   }
 
   // ─── Atualizar produto ─────────────────────────────────────
-  async updateProduct(id: string, input: UpdateProductInput) {
-    await this.getProductById(id);
+  async updateProduct(id: string, input: UpdateProductInput, newImageBuffer?: Buffer) {
+    const existingProduct = await this.getProductById(id);
 
     if (input.category_id) {
       await this.ensureCategoryExists(input.category_id);
     }
 
+    let updatedImageUrl = existingProduct.image_url;
+
+    if (newImageBuffer) {
+      updatedImageUrl = await StorageService.uploadImage(newImageBuffer, this.tenantDbName || 'default');
+
+      // Opcional: Deletar a imagem antiga do bucket para economizar espaço
+      if (existingProduct.image_url) {
+        await StorageService.deleteImage(existingProduct.image_url);
+      }
+    }
+
     return this.db.product.update({
       where: { id },
-      data: input,
+      data: {
+        ...input,
+        image_url: updatedImageUrl
+      },
       include: {
         category: { select: { id: true, name: true } },
         barcodes: true,
@@ -183,7 +206,7 @@ export class ProductsService {
   }
 
   // ─── Movimentação de estoque ───────────────────────────────
- async updateStock(id: string, input: UpdateStockInput) {
+  async updateStock(id: string, input: UpdateStockInput) {
     const product = await this.getProductById(id);
     const { operation, quantity } = input;
 
@@ -198,7 +221,7 @@ export class ProductsService {
 
     const updated = await this.db.product.update({
       where: { id },
-      data:  { stock_qty: newQty },
+      data: { stock_qty: newQty },
     });
 
     const isLowStock = updated.stock_qty < updated.stock_min;
@@ -247,11 +270,11 @@ export class ProductsService {
     });
 
     // Filtra em memória os que estão abaixo do mínimo
-    const lowStock = products.filter(p => p.stock_qty < p.stock_min);
+    const lowStock = products.filter((p: any) => p.stock_qty < p.stock_min);
 
     return {
       total: lowStock.length,
-      data: lowStock.sort((a, b) => a.stock_qty - b.stock_qty),
+      data: lowStock.sort((a: any, b: any) => a.stock_qty - b.stock_qty),
     };
   }
 

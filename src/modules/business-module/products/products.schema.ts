@@ -17,6 +17,7 @@ export const createProductSchema = z.object({
   cfop:            z.string().max(5).optional(),               // natureza da operação fiscal
   unit:            z.string().max(10).default('UN'),           // ex: UN, KG, L, CX
   is_active:       z.boolean().default(true),
+  image_url: z.string().url().optional(),
 });
 
 export const updateProductSchema = createProductSchema.partial();

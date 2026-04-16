@@ -8,6 +8,7 @@ import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import * as Sentry from "@sentry/node"; // 1. Importa o Sentry
+import multipart from '@fastify/multipart';
 
 // ── Master Module ──────────────────────────────────────────
 import { authRoutes } from './modules/master-module/auth/auth.routes';
@@ -77,13 +78,23 @@ app.register(rateLimit, {
 });
 
 app.register(socketio, {
-  cors: { origin: '*', methods: ['GET', 'POST'] }
+  cors: { origin: '*', methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }
 });
 
-app.register(cors, { origin: '*' });
+app.register(cors, {
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+});
 
 app.register(fastifyJwt, {
   secret: process.env.JWT_SECRET || 'super_secret_nexora_key_2026'
+});
+
+app.register(multipart, {
+  limits: {
+    fileSize: 5 * 1024 * 1024, // Limite de 5MB por segurança
+  }
 });
 
 // ── ROTAS ──────────────────────────────────────────────────

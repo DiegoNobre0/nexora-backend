@@ -25,7 +25,7 @@ model Category {
 }
 
 // ------------------------------------------------------
-// 2. PRODUTOS (substituiu Service)
+// 2. PRODUTOS 
 // ------------------------------------------------------
 model Product {
   id              String   @id @default(uuid())
