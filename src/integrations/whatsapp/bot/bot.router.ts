@@ -7,7 +7,7 @@ import { ConfigsService } from 'src/modules/business-module/configs/configs.serv
 import { BusinessClient } from 'src/database/business-manager';
 import { OrderFlow } from './flows/order.flow';
 import { LeadFlow } from './flows/lead.flow';
-import { StatusFlow } from './flows/tatus.flow';
+import { StatusFlow } from './flows/status.flow';
 import { FAQFlow } from './flows/faq.flow';
 
 // Fluxos

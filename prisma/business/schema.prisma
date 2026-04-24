@@ -28,9 +28,9 @@ model Category {
 // 2. PRODUTOS 
 // ------------------------------------------------------
 model Product {
-  id              String   @id @default(uuid())
-  category_id     String?
+  id              String   @id @default(uuid())  
   name            String
+  image_url       String?
   description     String?  @businessdb.Text
   price           Decimal  @businessdb.Decimal(10, 2)
   price_wholesale Decimal? @businessdb.Decimal(10, 2)
@@ -44,7 +44,7 @@ model Product {
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
-  category    Category?            @relation(fields: [category_id], references: [id])
+  categories    Category[]           
   barcodes    ProductBarcode[]
   order_items OrderItem[]
   commissions EmployeeCommission[]
@@ -405,12 +405,7 @@ model PromoKit {
   // Vamos focar na imagem principal para a IA, mas guardar até 4 para o painel.
   image_url_1 String?
   image_url_2 String?
-  image_url_3 String?
-  image_url_4 String?
-  image_url_5 String?
-  image_url_6 String?
-  image_url_7 String?
-  image_url_8 String?
+
 
   start_at DateTime  @default(now())
   end_at   DateTime? // Se nulo, é permanente

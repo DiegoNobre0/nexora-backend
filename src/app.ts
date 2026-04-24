@@ -34,6 +34,7 @@ import { analyticsRoutes } from './modules/business-module/analytics/analytics.r
 
 import { AppError, UpgradeRequiredError } from './shared/errors/AppError';
 import { masterDb } from './database/master';
+import { promoKitsRoutes } from './modules/business-module/promoKits/promo-kits.routes';
 
 // 2. Inicializa o Sentry antes de criar o app (Essencial para produção)
 if (process.env.SENTRY_DSN && process.env.NODE_ENV === 'production') {
@@ -91,6 +92,7 @@ app.register(fastifyJwt, {
   secret: process.env.JWT_SECRET || 'super_secret_nexora_key_2026'
 });
 
+
 app.register(multipart, {
   limits: {
     fileSize: 5 * 1024 * 1024, // Limite de 5MB por segurança
@@ -110,27 +112,29 @@ app.get('/health', async (request, reply) => {
   };
 });
 
+
 // Master Routes
-app.register(authRoutes,            { prefix: '/auth' });
-app.register(companiesRoutes,       { prefix: '/companies' });
-app.register(usersRoutes,           { prefix: '/users' });
-app.register(plansRoutes,           { prefix: '/plans' });
-app.register(subscriptionsRoutes,   { prefix: '/subscriptions' });
+app.register(authRoutes, { prefix: '/auth' });
+app.register(companiesRoutes, { prefix: '/companies' });
+app.register(usersRoutes, { prefix: '/users' });
+app.register(plansRoutes, { prefix: '/plans' });
+app.register(subscriptionsRoutes, { prefix: '/subscriptions' });
 app.register(whatsappWebhookRoutes, { prefix: '/whatsapp-webhook' });
 
 // Business Routes
-app.register(categoriesRoutes,   { prefix: '/categories' });
-app.register(productsRoutes,     { prefix: '/products' });
-app.register(clientsRoutes,      { prefix: '/clients' });
-app.register(employeesRoutes,    { prefix: '/employees' });
-app.register(leadsRoutes,        { prefix: '/leads' });
-app.register(ordersRoutes,       { prefix: '/orders' });
-app.register(paymentsRoutes,     { prefix: '/payments' });
+app.register(categoriesRoutes, { prefix: '/categories' });
+app.register(productsRoutes, { prefix: '/products' });
+app.register(clientsRoutes, { prefix: '/clients' });
+app.register(employeesRoutes, { prefix: '/employees' });
+app.register(leadsRoutes, { prefix: '/leads' });
+app.register(ordersRoutes, { prefix: '/orders' });
+app.register(paymentsRoutes, { prefix: '/payments' });
 app.register(cashRegisterRoutes, { prefix: '/cash-register' });
-app.register(taxesRoutes,        { prefix: '/taxes' });
-  app.register(deliveryRoutes,     { prefix: '/delivery' });
-app.register(configsRoutes,      { prefix: '/configs' });
-app.register(analyticsRoutes,    { prefix: '/analytics' });
+app.register(taxesRoutes, { prefix: '/taxes' });
+app.register(deliveryRoutes, { prefix: '/delivery' });
+app.register(configsRoutes, { prefix: '/configs' });
+app.register(analyticsRoutes, { prefix: '/analytics' });
+app.register(promoKitsRoutes, { prefix: '/promo-kits' });
 
 // ── TRATAMENTO GLOBAL DE ERROS (Consolidado) ───────────────
 
@@ -163,7 +167,7 @@ app.setErrorHandler((error, request, reply) => {
 
   // Erros 500 (Críticos) -> Manda pro Sentry e Loga
   request.log.error(error);
-  
+
   if (process.env.NODE_ENV === 'production') {
     Sentry.captureException(error);
   }

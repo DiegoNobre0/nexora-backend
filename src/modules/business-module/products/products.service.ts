@@ -1,6 +1,6 @@
 import { whatsappQueue } from 'src/worker/whatsapp.queue';
 import type { BusinessClient } from '../../../database/business-manager';
-import { NotFoundError, ConflictError, ValidationError } from '../../../shared/errors/AppError';
+import { NotFoundError, ConflictError, ValidationError, AppError } from '../../../shared/errors/AppError';
 import type {
   CreateProductInput,
   UpdateProductInput,
@@ -27,21 +27,35 @@ export class ProductsService {
     const { name, category_id, is_active, low_stock, page, limit } = input;
     const skip = (page - 1) * limit;
 
-    const where = {
-      ...(name && { name: { contains: name, mode: 'insensitive' as const } }),
-      ...(category_id && { category_id }),
+  const where: any = {
+      ...(name && { name: { contains: name, mode: 'insensitive' } }),
       ...(is_active !== undefined && { is_active }),
-      // low_stock é tratado após a busca — Prisma não compara dois campos na mesma query
+      // low_stock é tratado na memória logo abaixo
     };
 
+    if (category_id) {
+      where.categories = {
+        some: {
+          id: category_id
+        }
+      };
+    }
+
     let products = await this.db.product.findMany({
-      where,
-      orderBy: { name: 'asc' },
-      include: {
-        category: { select: { id: true, name: true } },
-        barcodes: true,
+      where: where,
+      orderBy: {
+        name: "asc"
       },
-    });
+      include: {
+        categories: { // ✅ CORRIGIDO
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        barcodes: true,
+      }
+    })
 
     // Filtra em memória os produtos abaixo do estoque mínimo
     if (low_stock) {
@@ -66,20 +80,23 @@ export class ProductsService {
   }
 
   // ─── Buscar por ID ─────────────────────────────────────────
-  async getProductById(id: string) {
-    const product = await this.db.product.findUnique({
-      where: { id },
-      include: {
-        category: { select: { id: true, name: true } },
-        barcodes: true,
+ async getProductById(id: string) {
+  const product = await this.db.product.findUnique({
+    where: { id },
+    include: {
+      categories: { 
+        select: {
+          id: true,
+          name: true
+        }
       },
-    });
+      barcodes: true,
+    }
+  });
 
-    if (!product) throw new NotFoundError('Produto');
-
-    return product;
-  }
-
+  if (!product) throw new AppError('Produto não encontrado', 404);
+  return product;
+}
   // ─── Buscar por código de barras ───────────────────────────
   async getProductByBarcode(code: string) {
     const barcode = await this.db.productBarcode.findUnique({
@@ -101,22 +118,24 @@ export class ProductsService {
 
   // ─── Criar produto ─────────────────────────────────────────
   async createProduct(input: CreateProductInput, imageBuffer?: Buffer) {
-    // Valida se a categoria existe antes de vincular
-    if (input.category_id) {
-      await this.ensureCategoryExists(input.category_id);
+    // 1. Valida se todas as categorias enviadas existem (Opcional, mas seguro)
+    if (input.category_ids && input.category_ids.length > 0) {
+      await Promise.all(
+        input.category_ids.map(id => this.ensureCategoryExists(id))
+      );
     }
 
+    // 2. Upload da imagem se houver buffer
     let imageUrl = input.image_url;
-
     if (imageBuffer) {
       imageUrl = await StorageService.uploadImage(imageBuffer, this.tenantDbName || 'default');
     }
 
+    // 3. Criação no Prisma
     return this.db.product.create({
       data: {
-        category_id: input.category_id,
-        image_url: imageUrl,
         name: input.name,
+        image_url: imageUrl,
         description: input.description,
         price: input.price,
         price_wholesale: input.price_wholesale,
@@ -127,9 +146,24 @@ export class ProductsService {
         cfop: input.cfop,
         unit: input.unit,
         is_active: input.is_active,
+
+        // Relacionamento M:N - Conecta as categorias enviadas
+        categories: {
+          connect: input.category_ids?.map((id: string) => ({ id })) || []
+        },
+
+        // Relacionamento 1:N - Cria os códigos de barras
+        barcodes: {
+          create: input.barcodes?.map((bc: any) => ({
+            code: bc.code,
+            unit: bc.unit || input.unit || 'UN'
+          })) || []
+        }
       },
       include: {
-        category: { select: { id: true, name: true } },
+        categories: {
+          select: { id: true, name: true }
+        },
         barcodes: true,
       },
     });
@@ -139,29 +173,54 @@ export class ProductsService {
   async updateProduct(id: string, input: UpdateProductInput, newImageBuffer?: Buffer) {
     const existingProduct = await this.getProductById(id);
 
-    if (input.category_id) {
-      await this.ensureCategoryExists(input.category_id);
+    // 1. Validação das categorias (Plural)
+    if (input.category_ids?.length) {
+      await Promise.all(
+        input.category_ids.map(catId => this.ensureCategoryExists(catId))
+      );
     }
 
+    // 2. Lógica de Imagem
     let updatedImageUrl = existingProduct.image_url;
 
     if (newImageBuffer) {
       updatedImageUrl = await StorageService.uploadImage(newImageBuffer, this.tenantDbName || 'default');
 
-      // Opcional: Deletar a imagem antiga do bucket para economizar espaço
       if (existingProduct.image_url) {
-        await StorageService.deleteImage(existingProduct.image_url);
+        // Tenta deletar a antiga, mas não trava o processo se falhar
+        StorageService.deleteImage(existingProduct.image_url).catch(err =>
+          console.error('Erro ao deletar imagem antiga:', err)
+        );
       }
     }
+
+    // 3. Extraímos category_ids e barcodes para tratar as relações separadamente
+    // Isso evita que o Prisma tente salvar o array direto na coluna (o que daria erro)
+    const { category_ids, barcodes, ...dataToUpdate } = input;
 
     return this.db.product.update({
       where: { id },
       data: {
-        ...input,
-        image_url: updatedImageUrl
+        ...dataToUpdate,
+        image_url: updatedImageUrl,
+
+        // No update de M:N, usamos 'set' para substituir a lista antiga pela nova
+        categories: category_ids ? {
+          set: category_ids.map(catId => ({ id: catId }))
+        } : undefined,
+
+        // Opcional: Se você quiser atualizar os barcodes também
+        // Aqui limpamos os antigos e criamos os novos (Wipe and Replace)
+        barcodes: barcodes ? {
+          deleteMany: {},
+          create: barcodes.map(bc => ({
+            code: bc.code,
+            unit: bc.unit || input.unit || 'UN'
+          }))
+        } : undefined
       },
       include: {
-        category: { select: { id: true, name: true } },
+        categories: { select: { id: true, name: true } }, // Plural aqui!
         barcodes: true,
       },
     });
@@ -183,6 +242,14 @@ export class ProductsService {
         `Use "pausar" para deixá-lo indisponível sem perder o histórico.`
       );
     }
+
+    if (product.image_url) {
+    // Usamos o .catch() para que, se o bucket falhar (ex: imagem já não existia lá), 
+    // a gente não impeça o produto de ser deletado do banco de dados.
+    await StorageService.deleteImage(product.image_url).catch(err => {
+      console.error(`⚠️ Aviso: Falha ao remover imagem do bucket para o produto ${id}:`, err);
+    });
+  }
 
     await this.db.product.delete({ where: { id } });
 
@@ -266,7 +333,7 @@ export class ProductsService {
   async lowStockAlert() {
     const products = await this.db.product.findMany({
       where: { is_active: true },
-      include: { category: { select: { id: true, name: true } } },
+      include: { categories: { select: { id: true, name: true } } },
     });
 
     // Filtra em memória os que estão abaixo do mínimo

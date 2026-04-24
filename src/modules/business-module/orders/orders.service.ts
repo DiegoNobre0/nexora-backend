@@ -97,17 +97,26 @@ export class OrdersService {
     // Inicia a Transação: Cria Pedido + Cria Itens + Baixa Estoque
     return this.db.$transaction(async (prisma) => {
       // Validação de Estoque em tempo real (evita race condition)
+    // Validação e Baixa de Estoque Atômica (Evita Race Condition)
       if (!input.is_proforma) {
         for (const item of input.items) {
-          const product = await prisma.product.findUnique({ where: { id: item.product_id } });
-          if (product!.stock_qty < item.quantity) {
-            throw new ValidationError(`Estoque insuficiente para "${product!.name}". Disponível: ${product!.stock_qty}`);
-          }
-          // Baixa o estoque
-          await prisma.product.update({
-            where: { id: item.product_id },
-            data: { stock_qty: { decrement: item.quantity } },
+          // A MÁGICA: O banco de dados SÓ vai atualizar se o estoque atual for >= à quantidade pedida.
+          const result = await prisma.product.updateMany({
+            where: { 
+              id: item.product_id,
+              stock_qty: { gte: item.quantity } // Bloqueio direto no banco!
+            },
+            data: { 
+              stock_qty: { decrement: item.quantity } 
+            },
           });
+
+          // Se a contagem de linhas atualizadas for 0, o estoque não era suficiente.
+          if (result.count === 0) {
+            // Fazemos um findUnique rápido apenas para pegar o nome do produto e dar um erro amigável
+            const product = await prisma.product.findUnique({ where: { id: item.product_id } });
+            throw new ValidationError(`Estoque insuficiente para "${product?.name || 'Produto'}".`);
+          }
         }
       }
 
@@ -223,13 +232,14 @@ export class OrdersService {
     return updatedOrder;
   }
 
-  async cancelOrder(orderId: string, reason: string) {
+ async cancelOrder(orderId: string, reason: string) {
     const order = await this.getOrderById(orderId);
     if (order.status === 'CANCELED') throw new ValidationError('O pedido já está cancelado.');
     if (order.status === 'DELIVERED') throw new ValidationError('Pedido já entregue não pode ser cancelado (use Estorno).');
 
-    return this.db.$transaction(async (prisma) => {
-      // Se não era orçamento, devolve os itens para o estoque
+    // Executa o cancelamento e estorno de estoque em transação
+    const canceledOrder = await this.db.$transaction(async (prisma) => {
+      // Devolve os itens para o estoque
       if (!order.is_proforma) {
         for (const item of order.items) {
           await prisma.product.update({
@@ -239,6 +249,7 @@ export class OrdersService {
         }
       }
 
+      // Atualiza o status e traz o cliente junto
       return prisma.order.update({
         where: { id: orderId },
         data: {
@@ -246,8 +257,24 @@ export class OrdersService {
           canceled_at: new Date(),
           cancel_reason: reason
         },
+        include: { client: true }
       });
     });
+
+    // 🔥 NOVO: Dispara notificação de cancelamento no WhatsApp!
+    if (canceledOrder.client?.phone && this.tenantDbName) {
+      await whatsappQueue.add('order-notification', {
+        business_db_name: this.tenantDbName,
+        phone: canceledOrder.client.phone,
+        order_id: canceledOrder.id.split('-')[0].toUpperCase(),
+        status: 'CANCELED',
+        template_name: 'pedido_cancelado',
+        // Opcional: Se o seu bot de WhatsApp suportar, você pode enviar o reason como parâmetro
+        reason: reason 
+      });
+    }
+
+    return canceledOrder;
   }
 
   async assignDelivery(orderId: string, employeeId: string) {
